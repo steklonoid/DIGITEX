@@ -1,0 +1,28 @@
+QWidget#hspacerwidgetinfo {
+    background-color: rgb(20, 21, 25);
+}
+QPushButton#BTCUSD-PERP {
+    background-color: rgb(26, 28, 54);
+    border: none;
+    font: bold 14px;
+    color: rgb(255, 255, 255)
+    }
+QPushButton#BTCUSD-PERP:hover {
+	background-color: rgb(39, 42, 81);
+	}
+
+QPushButton#ETHUSD-PERP {
+    background-color: rgb(26, 28, 54);
+    border: none;
+    font: bold 14px;
+    color: rgb(255, 255, 255)
+    }
+QPushButton#ETHUSD-PERP:hover {
+	background-color: rgb(39, 42, 81);
+	}
+
+QPushButton#buttonEnter {
+    color:rgb(255, 96, 96);
+    font: bold 12px;
+    border: none;
+    }

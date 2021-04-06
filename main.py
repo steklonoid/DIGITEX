@@ -12,6 +12,31 @@ from Crypto.Cipher import AES # pip install pycryptodome
 import websocket
 from threading import Thread
 
+class WSThread(Thread):
+    def __init__(self):
+        super(WSThread, self).__init__()
+        self.message = ''
+
+    def run(self) -> None:
+
+        def on_open(wssapp):
+            print('open')
+
+        def on_message(wssapp, message):
+            if message == 'ping':
+                wssapp.send('pong')
+            self.message = message
+            self.job()
+
+        self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_message=on_message)
+        self.wsapp.run_forever()
+
+    def job(self):
+        print(self.message)
+
+    def send(self, param):
+        self.wsapp.send(param)
+
 class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
     user = ''
@@ -19,18 +44,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     ak = ''
 
     def __init__(self):
-
-        def th():
-            def on_open(wssapp):
-                wssapp.send('{"id": 1,"method": "subscribe","params": ["BTCUSD-PERP@trades"]}')
-
-            def on_message(wssapp, message):
-                print(message)
-                if message == 'ping':
-                    wssapp.send('pong')
-
-            wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_message=on_message)
-            wsapp.run_forever()
 
         def createdb(fname):
             self.db.setDatabaseName(fname)
@@ -66,7 +79,7 @@ class MainWindow(QMainWindow, UiMainWindow):
 
         # отображение окна
         self.setupui(self)
-        self.dxthread = Thread(target=th)
+        self.dxthread = WSThread()
         self.dxthread.daemon = True
         self.dxthread.start()
 
@@ -136,8 +149,9 @@ class MainWindow(QMainWindow, UiMainWindow):
             print('account not found')
 
     @pyqtSlot()
-    def button1_clicked(self):
-        self.th_ConnectToDigitex.run()
+    def button1_clicked(self, name):
+        param = '{"id":1, "method":"subscribe", "params":["'+name+'@orderbook_5"]}'
+        self.dxthread.send(param)
 
 app = QApplication([])
 win = MainWindow()

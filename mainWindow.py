@@ -1,7 +1,7 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QVBoxLayout, QTableView
-from PyQt5.QtGui import QIcon, QPainter
+from PyQt5.QtGui import QIcon, QPainter, QColor
 
 class DisplayField(QWidget):
     def __init__(self):
@@ -14,7 +14,19 @@ class DisplayField(QWidget):
         painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
 
 class UiMainWindow(object):
+    def __init__(self):
+        self.buttonlist = []
+
     def setupui(self, mainwindow):
+
+        def eq_choose():
+            mainwindow.button1_clicked(self.sender().objectName())
+            for b in self.buttonlist:
+                if b == self.sender():
+                    b.setIcon(QIcon("./images/buttononlineicon.png"))
+                else:
+                    b.setIcon(QIcon("./images/buttonofflineicon.png"))
+
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
         mainwindow.setWindowTitle("Digitex Trading")
@@ -27,18 +39,43 @@ class UiMainWindow(object):
         self.gridLayout.setContentsMargins(1, 1, 1, 1)
         self.gridLayout.setObjectName("gridLayout")
 
+        #   верхняя полоска инфопанель
+        self.hspacerwidgetinfo = QWidget()
+        self.hspacerwidgetinfo.setObjectName('hspacerwidgetinfo')
+        self.hspacerwidgetinfo.setMaximumHeight(50)
+        self.hspacerinfo = QHBoxLayout(self.hspacerwidgetinfo)
+        self.hspacerinfo.setContentsMargins(0, 0, 0, 0)
+        self.hspacerinfo.setObjectName('hspacermenu')
+        self.buttonBTC = QPushButton()
+        self.buttonBTC.setObjectName('BTCUSD-PERP')
+        self.buttonBTC.setText('BTC')
+        self.buttonBTC.setMinimumHeight(50)
+        self.buttonBTC.clicked.connect(eq_choose)
+        self.buttonBTC.setIcon(QIcon("./images/buttonofflineicon.png"))
+        self.buttonlist.append(self.buttonBTC)
+        self.hspacerinfo.addWidget(self.buttonBTC)
+        self.buttonETH = QPushButton()
+        self.buttonETH.setObjectName('ETHUSD-PERP')
+        self.buttonETH.setText('ETH')
+        self.buttonETH.setMinimumHeight(50)
+        self.buttonETH.clicked.connect(eq_choose)
+        self.buttonETH.setIcon(QIcon("./images/buttonofflineicon.png"))
+        self.buttonlist.append(self.buttonETH)
+        self.hspacerinfo.addWidget(self.buttonETH)
+
+        self.gridLayout.addWidget(self.hspacerwidgetinfo, 0, 0, 1, 1)
         #   верхняя полоска вход не выполнен, аккаунт
         self.hspacerwidgetmenu = QWidget()
         self.hspacerwidgetmenu.setObjectName('hspacerwidgetmenu')
-        self.hspacerwidgetmenu.setMaximumHeight(25)
+        self.hspacerwidgetmenu.setMaximumHeight(50)
         self.hspacermenu = QHBoxLayout(self.hspacerwidgetmenu)
         self.hspacermenu.setContentsMargins(1, 1, 1, 1)
         self.hspacermenu.setObjectName('hspacermenu')
         self.buttonEnter = QPushButton()
         self.buttonEnter.setObjectName('buttonEnter')
-        self.buttonEnter.setText('вход не выполнен')
-        self.buttonEnter.setStyleSheet("color:rgb(255, 96, 96); font: bold 10px;border: none")
-        self.buttonEnter.setToolTip("Вход")
+        self.buttonEnter.setIcon(QIcon("./images/siluet.png"))
+        self.buttonEnter.setToolTip("вход не выполнен")
+        self.buttonEnter.setMinimumHeight(50)
         self.buttonEnter.setCursor(Qt.PointingHandCursor)
         self.buttonEnter.clicked.connect(self.buttonLogin_clicked)
         self.labelAccount = QLabel('Аккаунт')
@@ -48,7 +85,7 @@ class UiMainWindow(object):
         self.hspacermenu.addWidget(self.buttonEnter)
         self.hspacermenu.addWidget(self.labelAccount)
         self.hspacermenu.addWidget(self.comboBoxAccount)
-        self.gridLayout.addWidget(self.hspacerwidgetmenu, 0, 0, 1, 1)
+        self.gridLayout.addWidget(self.hspacerwidgetmenu, 0, 1, 1, 1)
 
         #   горизонтальный сплиттер, делящий остальное пространство внизу на две части
         self.splitter = QSplitter(Qt.Horizontal)
@@ -75,7 +112,7 @@ class UiMainWindow(object):
         self.splitter.addWidget(self.splitterv)
         self.splitter.setSizes([200, 100, 700])
 
-        self.gridLayout.addWidget(self.splitter, 1, 0, 1, 1)
+        self.gridLayout.addWidget(self.splitter, 1, 0, 1, 2)
 
         self.statusbar = QStatusBar(mainwindow)
         self.statusbar.setObjectName("statusbar")
