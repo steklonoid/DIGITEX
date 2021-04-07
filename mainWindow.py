@@ -1,6 +1,6 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QVBoxLayout, QTableView
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QAbstractItemView
 from PyQt5.QtGui import QIcon, QPainter, QColor
 
 class DisplayField(QWidget):
@@ -91,16 +91,13 @@ class UiMainWindow(object):
         self.splitter = QSplitter(Qt.Horizontal)
         self.graphicsView = DisplayField()
         self.splitter.addWidget(self.graphicsView)
-        self.vspacerwidget0 = QWidget()
-        self.vspacerwidget0.setObjectName('vspacerwidget0')
-        self.vspacer0 = QVBoxLayout(self.vspacerwidget0)
-        self.vspacer0.setContentsMargins(0, 0, 0, 0)
-        self.vspacer0.setObjectName('vspacer0')
-        self.button1 = QPushButton()
-        self.button1.setText('Проверка wss')
-        self.button1.clicked.connect(self.button1_clicked)
-        self.vspacer0.addWidget(self.button1)
-        self.splitter.addWidget(self.vspacerwidget0)
+        self.tableViewStair = QTableView()
+        self.tableViewStair.setObjectName("tableViewStair")
+        self.tableViewStair.resizeColumnsToContents()
+        self.tableViewStair.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tableViewStair.setSortingEnabled(True)
+        self.tableViewStair.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.splitter.addWidget(self.tableViewStair)
 
         self.splitterv = QSplitter(Qt.Vertical)
         self.tableView1 = QTableView()
@@ -110,7 +107,7 @@ class UiMainWindow(object):
         self.tableView2.setObjectName("tableView2")
         self.splitterv.addWidget(self.tableView2)
         self.splitter.addWidget(self.splitterv)
-        self.splitter.setSizes([200, 100, 700])
+        self.splitter.setSizes([200, 300, 500])
 
         self.gridLayout.addWidget(self.splitter, 1, 0, 1, 2)
 

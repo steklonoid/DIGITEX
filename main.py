@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
-from PyQt5.QtGui import QStandardItem
+from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtCore import QSettings, pyqtSlot
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
@@ -79,6 +79,13 @@ class MainWindow(QMainWindow, UiMainWindow):
 
         # отображение окна
         self.setupui(self)
+
+        self.modelStair = QStandardItemModel()
+        self.modelStair.setColumnCount(3)
+        self.tableViewStair.setModel(self.modelStair)
+        for i in range(0, 100):
+            self.modelStair.appendRow([QStandardItem(), QStandardItem(), QStandardItem()])
+
         self.dxthread = WSThread()
         self.dxthread.daemon = True
         self.dxthread.start()
