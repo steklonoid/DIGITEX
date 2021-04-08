@@ -1,21 +1,35 @@
+import math
 import sys
 import os
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
-from PyQt5.QtGui import QStandardItem, QStandardItemModel
-from PyQt5.QtCore import QSettings, pyqtSlot
+from PyQt5.QtGui import QStandardItem, QStandardItemModel, QColor
+from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, AddAccount
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
-# from wss import ConnectToDigitex
 import websocket
 from threading import Thread
+import json
+
+NUMROWS = 50
+ex = {'BTCUSD-PERP':{'dist':5},'ETHUSD-PERP':{'dist':0.25}}
+
+class CellTable(QStandardItem):
+    def __init__(self):
+        QStandardItem.__init__(self)
+        self.setBackground(QColor(0, 21, 25))
+        self.setForeground(QColor(255, 255, 255))
 
 class WSThread(Thread):
-    def __init__(self):
+    def __init__(self, pc):
         super(WSThread, self).__init__()
-        self.message = ''
+        self.message = dict()
+        self.pc = pc
+        self.bids = []
+        self.asks = []
+        self.spotPx = 0
 
     def run(self) -> None:
 
@@ -25,16 +39,31 @@ class WSThread(Thread):
         def on_message(wssapp, message):
             if message == 'ping':
                 wssapp.send('pong')
-            self.message = message
-            self.job()
+            self.message = json.loads(message)
+            if self.message.get('ch'):
+                chanel = self.message.get('ch')
+                data = self.message['data']
+                if chanel == 'orderbook_25':
+                    self.bids = data['bids']
+                    self.asks = data['asks']
+                    self.pc.message_orderbook()
+                elif chanel == 'index':
+                    self.spotPx = data['spotPx']
+                    self.pc.message_index()
+
 
         self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_message=on_message)
         self.wsapp.run_forever()
 
-    def job(self):
-        print(self.message)
-
-    def send(self, param):
+    def changeEx(self, name, lastname):
+        if lastname != '':
+            param = '{"id":2, "method":"unsubscribe", "params":["' + lastname + '@orderbook_25"]}'
+            self.wsapp.send(param)
+            param = '{"id":2, "method":"unsubscribe", "params":["' + lastname + '@index"]}'
+            self.wsapp.send(param)
+        param = '{"id":1, "method":"subscribe", "params":["' + name + '@orderbook_25"]}'
+        self.wsapp.send(param)
+        param = '{"id":5, "method":"subscribe", "params":["' + name + '@index"]}'
         self.wsapp.send(param)
 
 class MainWindow(QMainWindow, UiMainWindow):
@@ -42,6 +71,14 @@ class MainWindow(QMainWindow, UiMainWindow):
     user = ''
     psw = ''
     ak = ''
+    currentEx = ''
+    current_spot_price = 0
+    current_cell_price = 0
+    last_cell_price = 0
+    current_central_cell = 0
+    current_dist = 0
+    internal_bounds = []
+    external_bounds = [0, 0]
 
     def __init__(self):
 
@@ -83,10 +120,16 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.modelStair = QStandardItemModel()
         self.modelStair.setColumnCount(3)
         self.tableViewStair.setModel(self.modelStair)
-        for i in range(0, 100):
-            self.modelStair.appendRow([QStandardItem(), QStandardItem(), QStandardItem()])
+        for i in range(0, NUMROWS * 2 + 1):
+            self.modelStair.appendRow([CellTable(), CellTable(), CellTable()])
+        self.tableViewStair.verticalHeader().close()
+        self.tableViewStair.horizontalHeader().close()
+        self.qi1 = self.modelStair.createIndex(0, 0)
+        self.qi2 = self.modelStair.createIndex(NUMROWS * 2, 2)
+        self.qcenter = self.modelStair.createIndex(NUMROWS, 1)
+        self.tableViewStair.scrollTo(self.qcenter)
 
-        self.dxthread = WSThread()
+        self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
 
@@ -157,8 +200,46 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def button1_clicked(self, name):
-        param = '{"id":1, "method":"subscribe", "params":["'+name+'@orderbook_5"]}'
-        self.dxthread.send(param)
+        if name != self.currentEx:
+            self.dxthread.changeEx(name, self.currentEx)
+            self.currentEx = name
+            self.current_dist = ex[self.currentEx]['dist']
+    def change_internal_bounds(self):
+        self.modelStair.item(NUMROWS, 1).setData(self.current_central_cell, Qt.DisplayRole)
+        for i in range(1, NUMROWS + 1):
+            self.modelStair.item(NUMROWS - i, 1).setData(self.current_central_cell + i * self.current_dist, Qt.DisplayRole)
+            self.modelStair.item(NUMROWS + i, 1).setData(self.current_central_cell - i * self.current_dist, Qt.DisplayRole)
+
+    def message_orderbook(self):
+        for i in range(0, NUMROWS * 2 + 1):
+            self.modelStair.item(i, 0).setData('', Qt.DisplayRole)
+            self.modelStair.item(i, 0).setBackground(QColor(28, 34, 54))
+            self.modelStair.item(i, 2).setData('', Qt.DisplayRole)
+            self.modelStair.item(i, 2).setBackground(QColor(28, 34, 54))
+        for i in range(0, 25):
+            ind = int((self.dxthread.asks[i][0] - self.current_central_cell) / self.current_dist)
+            if ind <= NUMROWS:
+                self.modelStair.item(NUMROWS - ind, 2).setData(self.dxthread.asks[i][1], Qt.DisplayRole)
+            ind = int((self.current_central_cell - self.dxthread.bids[i][0]) / self.current_dist)
+            if ind <= NUMROWS:
+                self.modelStair.item(NUMROWS + ind, 0).setData(self.dxthread.bids[i][1], Qt.DisplayRole)
+        self.tableViewStair.dataChanged(self.qi1, self.qi2)
+
+    def message_index(self):
+         self.current_spot_price = self.dxthread.spotPx
+         self.current_cell_price = math.floor(self.current_spot_price / self.current_dist)*self.current_dist
+
+         if math.fabs(self.current_cell_price - self.current_central_cell) >= 10 * self.current_dist:
+             self.current_central_cell = self.current_cell_price
+             self.change_internal_bounds()
+
+         shift = int((self.current_cell_price - self.current_central_cell) / self.current_dist)
+         for i in range(0, NUMROWS * 2 + 1):
+             if i == NUMROWS - shift - 1:
+                self.modelStair.item(i, 1).setBackground(QColor(28, 84, 54))
+             else:
+                 self.modelStair.item(i, 1).setBackground(QColor(0, 21, 25))
+
 
 app = QApplication([])
 win = MainWindow()
