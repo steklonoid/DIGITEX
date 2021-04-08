@@ -1,21 +1,28 @@
 import sys
 import os
+import threading
+
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
-from PyQt5.QtCore import QSettings, pyqtSlot
+from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, AddAccount
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
-# from wss import ConnectToDigitex
 import websocket
 from threading import Thread
+import json
+
+NUMROWS = 100
 
 class WSThread(Thread):
-    def __init__(self):
+    def __init__(self, pc):
         super(WSThread, self).__init__()
-        self.message = ''
+        self.message = dict()
+        self.pc = pc
+        self.bids = []
+        self.asks = []
 
     def run(self) -> None:
 
@@ -25,16 +32,21 @@ class WSThread(Thread):
         def on_message(wssapp, message):
             if message == 'ping':
                 wssapp.send('pong')
-            self.message = message
-            self.job()
+            self.message = json.loads(message)
+            if self.message.get('ch'):
+                data = self.message['data']
+                self.bids = data['bids']
+                self.asks = data['asks']
+                self.pc.on_dgtx_message()
 
         self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_message=on_message)
         self.wsapp.run_forever()
 
-    def job(self):
-        print(self.message)
-
-    def send(self, param):
+    def changeEx(self, name, lastname):
+        if lastname != '':
+            param = '{"id":2, "method":"unsubscribe", "params":["' + lastname + '@orderbook_25"]}'
+            self.wsapp.send(param)
+        param = '{"id":1, "method":"subscribe", "params":["' + name + '@orderbook_25"]}'
         self.wsapp.send(param)
 
 class MainWindow(QMainWindow, UiMainWindow):
@@ -42,6 +54,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     user = ''
     psw = ''
     ak = ''
+    currentEx = ''
 
     def __init__(self):
 
@@ -83,10 +96,12 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.modelStair = QStandardItemModel()
         self.modelStair.setColumnCount(3)
         self.tableViewStair.setModel(self.modelStair)
-        for i in range(0, 100):
+        for i in range(0, NUMROWS):
             self.modelStair.appendRow([QStandardItem(), QStandardItem(), QStandardItem()])
+        self.tableViewStair.verticalHeader().close()
+        self.tableViewStair.horizontalHeader().close()
 
-        self.dxthread = WSThread()
+        self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
 
@@ -157,8 +172,24 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def button1_clicked(self, name):
-        param = '{"id":1, "method":"subscribe", "params":["'+name+'@orderbook_5"]}'
-        self.dxthread.send(param)
+        if name != self.currentEx:
+            self.dxthread.changeEx(name, self.currentEx)
+            self.currentEx = name
+
+    def on_dgtx_message(self):
+        centerrow = NUMROWS // 2
+        qi1 = self.modelStair.createIndex(0, 0)
+        qi2 = self.modelStair.createIndex(NUMROWS, 3)
+        for i in range(0, 25):
+            # print(self.dxthread.asks[i][0])
+            self.modelStair.item(centerrow - 1 - i, 1).setData(self.dxthread.asks[i][0], Qt.DisplayRole)
+            self.modelStair.item(centerrow - 1 - i, 2).setData(self.dxthread.asks[i][1], Qt.DisplayRole)
+
+            self.modelStair.item(centerrow + 1 + i, 1).setData(self.dxthread.bids[i][0], Qt.DisplayRole)
+            self.modelStair.item(centerrow + 1 + i, 0).setData(self.dxthread.bids[i][1], Qt.DisplayRole)
+            self.tableViewStair.dataChanged(qi1, qi2)
+
+
 
 app = QApplication([])
 win = MainWindow()
