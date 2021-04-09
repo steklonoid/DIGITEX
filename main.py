@@ -227,6 +227,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_index(self):
          self.current_spot_price = self.dxthread.spotPx
+         self.labelprice.setText(str(self.current_spot_price))
+         #self.graphicsView.repaint()
          self.current_cell_price = math.floor(self.current_spot_price / self.current_dist)*self.current_dist
 
          if math.fabs(self.current_cell_price - self.current_central_cell) >= 10 * self.current_dist:

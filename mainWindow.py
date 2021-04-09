@@ -1,17 +1,24 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QAbstractItemView
-from PyQt5.QtGui import QIcon, QPainter, QColor
+from PyQt5.QtGui import QIcon, QPainter, QColor, QFont, QPen
 
 class DisplayField(QWidget):
-    def __init__(self):
+    def __init__(self, pc):
         QWidget.__init__(self)
+        self.pc = pc
+        self.fontcurprice = QFont("Helvetica", 10, QFont.Bold)
 
     def paintEvent(self, event):
         painter = QPainter(self)
         width = painter.viewport().width()  # текущая ширина окна рисования
         height = painter.viewport().height()  # текущая высота окна рисования
         painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
+
+        # painter.setPen(QPen(Qt.white, 1))
+        # painter.setFont(self.fontcurprice)
+        # if self.pc.current_spot_price:
+        #     painter.drawText(10, 15, str(self.pc.current_spot_price))
 
 class UiMainWindow(object):
     def __init__(self):
@@ -89,8 +96,10 @@ class UiMainWindow(object):
 
         #   горизонтальный сплиттер, делящий остальное пространство внизу на две части
         self.splitter = QSplitter(Qt.Horizontal)
-        self.graphicsView = DisplayField()
-        self.splitter.addWidget(self.graphicsView)
+        # self.graphicsView = DisplayField(self)
+        # self.splitter.addWidget(self.graphicsView)
+        self.labelprice = QLabel()
+        self.splitter.addWidget(self.labelprice)
         self.tableViewStair = QTableView()
         self.tableViewStair.setObjectName("tableViewStair")
         self.tableViewStair.resizeColumnsToContents()
