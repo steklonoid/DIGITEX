@@ -28,5 +28,5 @@ QPushButton#buttonEnter {
     }
 
 QTableView::item:hover {
-    background-color: #D3F1FC;
+    background-color: rgb(0, 0, 0);
 }

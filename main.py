@@ -1,8 +1,10 @@
 import math
 import sys
 import os
+import time
+
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
-from PyQt5.QtGui import QStandardItem, QStandardItemModel, QColor
+from PyQt5.QtGui import QStandardItem, QStandardItemModel, QColor, QFont
 from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
@@ -15,12 +17,21 @@ import json
 
 NUMROWS = 50
 ex = {'BTCUSD-PERP':{'dist':5},'ETHUSD-PERP':{'dist':0.25}}
+ids = {'subscribe':1, 'unsubscribe':2, 'auth':3, 'getTraderStatus':4, 'placeOrder':5, 'cancelOrder':6, 'cancelAllOrders':7}
+chanels = {'orderbook_25', 'index', 'traderStatus', 'tradingStatus', 'orderStatus', 'orderFilled', 'orderCancelled'}
 
 class CellTable(QStandardItem):
     def __init__(self):
         QStandardItem.__init__(self)
         self.setBackground(QColor(0, 21, 25))
         self.setForeground(QColor(255, 255, 255))
+
+class CellTableClick(QStandardItem):
+    def __init__(self):
+        QStandardItem.__init__(self)
+        self.setBackground(QColor(90, 0, 157))
+        self.setForeground(QColor(255, 128, 0))
+        self.setFont(QFont("Helvetica", 14, QFont.Bold))
 
 class WSThread(Thread):
     def __init__(self, pc):
@@ -33,13 +44,15 @@ class WSThread(Thread):
 
     def run(self) -> None:
 
-        def on_open(wssapp):
-            print('open')
-
         def on_message(wssapp, message):
             if message == 'ping':
                 wssapp.send('pong')
             self.message = json.loads(message)
+            # print(self.message)
+            if self.message.get('id'):
+                id = self.message.get('id')
+                status = self.message.get('status')
+                print(id, status)
             if self.message.get('ch'):
                 chanel = self.message.get('ch')
                 data = self.message['data']
@@ -51,9 +64,12 @@ class WSThread(Thread):
                     self.spotPx = data['spotPx']
                     self.pc.message_index()
 
-
-        self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_message=on_message)
+        self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_message=on_message)
         self.wsapp.run_forever()
+
+    def traderstatusrequest(self):
+        param = '{"id": 4, "method": "getTraderStatus", "params": {"symbol": "BTCUSD-PERP"}}'
+        self.wsapp.send(param)
 
     def changeEx(self, name, lastname):
         if lastname != '':
@@ -63,22 +79,26 @@ class WSThread(Thread):
             self.wsapp.send(param)
         param = '{"id":1, "method":"subscribe", "params":["' + name + '@orderbook_25"]}'
         self.wsapp.send(param)
-        param = '{"id":5, "method":"subscribe", "params":["' + name + '@index"]}'
+        param = '{"id":1, "method":"subscribe", "params":["' + name + '@index"]}'
         self.wsapp.send(param)
+
+    def auth(self, ak):
+        param = '{"id":3, "method":"auth", "params":{"type":"token", "value":"' + ak + '"}}'
+        self.wsapp.send(param)
+        # time.sleep(1)
+        # param = '{"id": 4, "method": "getTraderStatus", "params": {"symbol": "BTCUSD-PERP"}}'
+        # self.wsapp.send(param)
 
 class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
     user = ''
     psw = ''
-    ak = ''
     currentEx = ''
     current_spot_price = 0
     current_cell_price = 0
     last_cell_price = 0
     current_central_cell = 0
     current_dist = 0
-    internal_bounds = []
-    external_bounds = [0, 0]
 
     def __init__(self):
 
@@ -118,10 +138,10 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.setupui(self)
 
         self.modelStair = QStandardItemModel()
-        self.modelStair.setColumnCount(3)
+        self.modelStair.setColumnCount(4)
         self.tableViewStair.setModel(self.modelStair)
         for i in range(0, NUMROWS * 2 + 1):
-            self.modelStair.appendRow([CellTable(), CellTable(), CellTable()])
+            self.modelStair.appendRow([CellTable(), CellTable(), CellTable(), CellTableClick()])
         self.tableViewStair.verticalHeader().close()
         self.tableViewStair.horizontalHeader().close()
         self.qi1 = self.modelStair.createIndex(0, 0)
@@ -169,6 +189,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             rw.exec_()
             self.comboBoxAccount.setCurrentIndex(0)
             return
+
         IV_SIZE = 16  # 128 bit, fixed for the AES algorithm
         KEY_SIZE = 32  # 256 bit meaning AES-256, can also be 128 or 192 bits
         SALT_SIZE = 16  # This size is arbitrary
@@ -186,15 +207,8 @@ class MainWindow(QMainWindow, UiMainWindow):
                                           dklen=IV_SIZE + KEY_SIZE)
             iv = derived[0:IV_SIZE]
             key = derived[IV_SIZE:]
-            self.ak = AES.new(key, AES.MODE_CFB, iv).decrypt(en_ak_byte[SALT_SIZE:]).decode('utf-8')
-            en_pk_int = int(q1.value(1))
-            en_pk_byte = en_pk_int.to_bytes((en_pk_int.bit_length() + 7) // 8, sys.byteorder)
-            salt = en_pk_byte[0:SALT_SIZE]
-            derived = hashlib.pbkdf2_hmac('sha256', self.psw.encode('utf-8'), salt, 100000,
-                                          dklen=IV_SIZE + KEY_SIZE)
-            iv = derived[0:IV_SIZE]
-            key = derived[IV_SIZE:]
-            self.pk = AES.new(key, AES.MODE_CFB, iv).decrypt(en_pk_byte[SALT_SIZE:])
+            ak = AES.new(key, AES.MODE_CFB, iv).decrypt(en_ak_byte[SALT_SIZE:]).decode('utf-8')
+            self.dxthread.auth(ak)
         else:
             print('account not found')
 
@@ -204,6 +218,13 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.dxthread.changeEx(name, self.currentEx)
             self.currentEx = name
             self.current_dist = ex[self.currentEx]['dist']
+
+    @pyqtSlot()
+    def tableViewStairClicked(self):
+        indexCell = self.tableViewStair.selectedIndexes()[0].siblingAtColumn(3)
+        self.modelStair.setData(indexCell, 5, Qt.DisplayRole)
+
+
     def change_internal_bounds(self):
         self.modelStair.item(NUMROWS, 1).setData(self.current_central_cell, Qt.DisplayRole)
         for i in range(1, NUMROWS + 1):
@@ -213,16 +234,18 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_orderbook(self):
         for i in range(0, NUMROWS * 2 + 1):
             self.modelStair.item(i, 0).setData('', Qt.DisplayRole)
-            self.modelStair.item(i, 0).setBackground(QColor(28, 34, 54))
+            self.modelStair.item(i, 0).setBackground(QColor(28, 34, 34))
             self.modelStair.item(i, 2).setData('', Qt.DisplayRole)
-            self.modelStair.item(i, 2).setBackground(QColor(28, 34, 54))
+            self.modelStair.item(i, 2).setBackground(QColor(28, 34, 34))
         for i in range(0, 25):
             ind = int((self.dxthread.asks[i][0] - self.current_central_cell) / self.current_dist)
             if ind <= NUMROWS:
                 self.modelStair.item(NUMROWS - ind, 2).setData(self.dxthread.asks[i][1], Qt.DisplayRole)
+                self.modelStair.item(NUMROWS - ind, 2).setBackground(QColor(68, 24, 24))
             ind = int((self.current_central_cell - self.dxthread.bids[i][0]) / self.current_dist)
             if ind <= NUMROWS:
                 self.modelStair.item(NUMROWS + ind, 0).setData(self.dxthread.bids[i][1], Qt.DisplayRole)
+                self.modelStair.item(NUMROWS + ind, 0).setBackground(QColor(24, 68, 24))
         self.tableViewStair.dataChanged(self.qi1, self.qi2)
 
     def message_index(self):
@@ -238,7 +261,7 @@ class MainWindow(QMainWindow, UiMainWindow):
          shift = int((self.current_cell_price - self.current_central_cell) / self.current_dist)
          for i in range(0, NUMROWS * 2 + 1):
              if i == NUMROWS - shift - 1:
-                self.modelStair.item(i, 1).setBackground(QColor(28, 84, 54))
+                self.modelStair.item(i, 1).setBackground(QColor(24, 24, 68))
              else:
                  self.modelStair.item(i, 1).setBackground(QColor(0, 21, 25))
 
