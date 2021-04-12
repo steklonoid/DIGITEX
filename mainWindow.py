@@ -89,6 +89,8 @@ class UiMainWindow(object):
         self.labelAccount.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.comboBoxAccount = QComboBox()
         self.comboBoxAccount.currentIndexChanged.connect(self.comboBoxAccount_currentIndexChanged)
+        self.labelbalance = QLabel()
+        self.labelbalance.setFont(QFont("Helvetica", 14, QFont.Bold))
         self.hspacermenu.addWidget(self.buttonEnter)
         self.hspacermenu.addWidget(self.labelAccount)
         self.hspacermenu.addWidget(self.comboBoxAccount)
@@ -106,6 +108,8 @@ class UiMainWindow(object):
         self.tableViewStair.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tableViewStair.setSortingEnabled(True)
         self.tableViewStair.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tableViewStair.setCursor(Qt.PointingHandCursor)
+        self.tableViewStair.clicked.connect(self.tableViewStairClicked)
         self.splitter.addWidget(self.tableViewStair)
 
         self.splitterv = QSplitter(Qt.Vertical)
@@ -116,7 +120,7 @@ class UiMainWindow(object):
         self.tableView2.setObjectName("tableView2")
         self.splitterv.addWidget(self.tableView2)
         self.splitter.addWidget(self.splitterv)
-        self.splitter.setSizes([200, 300, 500])
+        self.splitter.setSizes([100, 400, 500])
 
         self.gridLayout.addWidget(self.splitter, 1, 0, 1, 2)
 
