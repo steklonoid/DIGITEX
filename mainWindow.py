@@ -1,6 +1,6 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QAbstractItemView
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QAbstractItemView, QSlider, QLineEdit
 from PyQt5.QtGui import QIcon, QPainter, QColor, QFont, QPen
 
 class DisplayField(QWidget):
@@ -26,7 +26,7 @@ class UiMainWindow(object):
 
     def setupui(self, mainwindow):
 
-        def eq_choose():
+        def ex_choose():
             mainwindow.button1_clicked(self.sender().objectName())
             for b in self.buttonlist:
                 if b == self.sender():
@@ -57,18 +57,17 @@ class UiMainWindow(object):
         self.buttonBTC.setObjectName('BTCUSD-PERP')
         self.buttonBTC.setText('BTC')
         self.buttonBTC.setMinimumHeight(50)
-        self.buttonBTC.clicked.connect(eq_choose)
-        self.buttonBTC.setIcon(QIcon("./images/buttonofflineicon.png"))
+        self.buttonBTC.clicked.connect(ex_choose)
         self.buttonlist.append(self.buttonBTC)
         self.hspacerinfo.addWidget(self.buttonBTC)
         self.buttonETH = QPushButton()
         self.buttonETH.setObjectName('ETHUSD-PERP')
         self.buttonETH.setText('ETH')
         self.buttonETH.setMinimumHeight(50)
-        self.buttonETH.clicked.connect(eq_choose)
-        self.buttonETH.setIcon(QIcon("./images/buttonofflineicon.png"))
+        self.buttonETH.clicked.connect(ex_choose)
         self.buttonlist.append(self.buttonETH)
         self.hspacerinfo.addWidget(self.buttonETH)
+        self.buttonBTC.clicked.emit()
 
         self.gridLayout.addWidget(self.hspacerwidgetinfo, 0, 0, 1, 1)
         #   верхняя полоска вход не выполнен, аккаунт
@@ -78,6 +77,9 @@ class UiMainWindow(object):
         self.hspacermenu = QHBoxLayout(self.hspacerwidgetmenu)
         self.hspacermenu.setContentsMargins(1, 1, 1, 1)
         self.hspacermenu.setObjectName('hspacermenu')
+        self.labelbalance = QLabel('0')
+        self.labelbalance.setFont(QFont("Helvetica", 12, QFont.Bold))
+        self.labelbalance.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.buttonEnter = QPushButton()
         self.buttonEnter.setObjectName('buttonEnter')
         self.buttonEnter.setIcon(QIcon("./images/siluet.png"))
@@ -89,8 +91,7 @@ class UiMainWindow(object):
         self.labelAccount.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.comboBoxAccount = QComboBox()
         self.comboBoxAccount.currentIndexChanged.connect(self.comboBoxAccount_currentIndexChanged)
-        self.labelbalance = QLabel()
-        self.labelbalance.setFont(QFont("Helvetica", 14, QFont.Bold))
+        self.hspacermenu.addWidget(self.labelbalance)
         self.hspacermenu.addWidget(self.buttonEnter)
         self.hspacermenu.addWidget(self.labelAccount)
         self.hspacermenu.addWidget(self.comboBoxAccount)
@@ -116,9 +117,62 @@ class UiMainWindow(object):
         self.tableView1 = QTableView()
         self.tableView1.setObjectName("tableView1")
         self.splitterv.addWidget(self.tableView1)
-        self.tableView2 = QTableView()
-        self.tableView2.setObjectName("tableView2")
-        self.splitterv.addWidget(self.tableView2)
+        self.control_gridLayout_widget = QWidget()
+        self.control_gridLayout = QGridLayout(self.control_gridLayout_widget)
+        # сдайдер плеча
+        self.slider_leverage = QSlider(Qt.Horizontal)
+        self.slider_leverage.setRange(5, 100)
+        self.slider_leverage.setSingleStep(5)
+        self.slider_leverage.setTickInterval(5)
+        self.slider_leverage.setTickPosition(QSlider.TicksBelow)
+        self.slider_leverage.setValue(5)
+        self.slider_leverage.valueChanged.connect(self.slider_leverage_valueChanged)
+        self.control_gridLayout.addWidget(self.slider_leverage, 0, 0, 1, 1)
+        self.slider_leverage_value = QLineEdit()
+        self.slider_leverage_value.setText('5')
+        self.slider_leverage_value.editingFinished.connect(self.slider_leverage_value_editingFinished)
+        self.control_gridLayout.addWidget(self.slider_leverage_value, 0, 1, 1, 1)
+        self.control_gridLayout.addWidget(QLabel('Плечо'), 0, 2, 1, 1)
+        # слайдер к-ва контрактов
+        self.slider_numconts = QSlider(Qt.Horizontal)
+        self.slider_numconts.setRange(1, 100)
+        self.slider_numconts.setSingleStep(5)
+        self.slider_numconts.setTickInterval(5)
+        self.slider_numconts.setTickPosition(QSlider.TicksBelow)
+        self.slider_numconts.setValue(1)
+        self.slider_numconts.valueChanged.connect(self.slider_numconts_valueChanged)
+        self.control_gridLayout.addWidget(self.slider_numconts, 1, 0, 1, 1)
+        self.slider_numconts_value = QLineEdit()
+        self.slider_numconts_value.setText('1')
+        self.slider_numconts_value.editingFinished.connect(self.slider_numconts_value_editingFinished)
+        self.control_gridLayout.addWidget(self.slider_numconts_value, 1, 1, 1, 1)
+        self.control_gridLayout.addWidget(QLabel('Квадратов'), 1, 2, 1, 1)
+        # расстояния открытия / закрытия
+        self.openclosedistspacerwidget = QWidget()
+        self.openclosedistspacer = QHBoxLayout(self.openclosedistspacerwidget)
+        self.lineeditopendist = QLineEdit()
+        self.lineeditopendist.setText('10')
+        self.lineeditopendist.editingFinished.connect(self.lineeditopendist_editingFinished)
+        self.openclosedistspacer.addWidget(self.lineeditopendist)
+        self.openclosedistspacer.addWidget(QLabel('Дистанция открытия'))
+        self.lineeditclosedist = QLineEdit()
+        self.lineeditclosedist.setText('5')
+        self.lineeditclosedist.editingFinished.connect(self.lineeditclosedist_editingFinished)
+        self.openclosedistspacer.addWidget(self.lineeditclosedist)
+        self.openclosedistspacer.addWidget(QLabel('Дистанция закрытия'))
+        self.control_gridLayout.addWidget(self.openclosedistspacerwidget, 2, 0, 1, 1)
+        # кнопка старт
+        self.startbutton = QPushButton()
+        self.startbutton.setText('СТАРТ')
+        self.startbutton.clicked.connect(self.startbutton_clicked)
+        self.control_gridLayout.addWidget(self.startbutton, 3, 0, 2, 2)
+        # кнопка закрыть все ордера
+        self.button_closeall = QPushButton()
+        self.button_closeall.setText('закрыть все ордера')
+        self.button_closeall.clicked.connect(self.button_closeall_clicked)
+        self.control_gridLayout.addWidget(self.button_closeall, 4, 1, 2, 2)
+
+        self.splitterv.addWidget(self.control_gridLayout_widget)
         self.splitter.addWidget(self.splitterv)
         self.splitter.setSizes([100, 400, 500])
 
