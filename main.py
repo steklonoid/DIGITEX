@@ -1,7 +1,7 @@
 import math
 import sys
 import os
-import time
+
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5.QtGui import QStandardItem, QStandardItemModel, QColor, QFont
@@ -14,6 +14,7 @@ from Crypto.Cipher import AES # pip install pycryptodome
 import websocket
 from threading import Thread
 import json
+# import time
 
 NUMROWS = 50
 ex = {'BTCUSD-PERP':{'dist':5},'ETHUSD-PERP':{'dist':0.25}}
@@ -40,36 +41,41 @@ class WSThread(Thread):
         self.pc = pc
         self.bids = []
         self.asks = []
-        self.spotPx = 0
 
     def run(self) -> None:
 
         def on_message(wssapp, message):
             if message == 'ping':
                 wssapp.send('pong')
-            self.message = json.loads(message)
-            # print(self.message)
-            if self.message.get('id'):
-                id = self.message.get('id')
-                status = self.message.get('status')
-                print(id, status)
-            if self.message.get('ch'):
-                chanel = self.message.get('ch')
-                data = self.message['data']
-                if chanel == 'orderbook_25':
-                    self.bids = data['bids']
-                    self.asks = data['asks']
-                    self.pc.message_orderbook()
-                elif chanel == 'index':
-                    self.spotPx = data['spotPx']
-                    self.pc.message_index()
+            else:
+                self.message = json.loads(message)
+                if self.message.get('id'):
+                    id = self.message.get('id')
+                    status = self.message.get('status')
+                    if status == 'ok':
+                        self.getTraderStatus(self.pc.currentEx)
+                if self.message.get('ch'):
+                    channel = self.message.get('ch')
+                    data = self.message['data']
+                    if channel == 'orderbook_25':
+                        self.bids = data['bids']
+                        self.asks = data['asks']
+                        self.pc.message_orderbook()
+                    elif channel == 'index':
+                        self.pc.message_index(data['spotPx'])
+                    elif channel == 'traderStatus':
+                        self.pc.message_traderStatus(data)
+                    elif channel == 'tradingStatus':
+                        self.pc.message_tradingStatus(data['available'])
+                    elif channel == 'orderStatus':
+                        print('')
+                    elif channel == 'orderFilled':
+                        print('')
+                    elif channel == 'orderCancelled':
+                        print('')
 
         self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_message=on_message)
         self.wsapp.run_forever()
-
-    def traderstatusrequest(self):
-        param = '{"id": 4, "method": "getTraderStatus", "params": {"symbol": "BTCUSD-PERP"}}'
-        self.wsapp.send(param)
 
     def changeEx(self, name, lastname):
         if lastname != '':
@@ -85,20 +91,36 @@ class WSThread(Thread):
     def auth(self, ak):
         param = '{"id":3, "method":"auth", "params":{"type":"token", "value":"' + ak + '"}}'
         self.wsapp.send(param)
-        # time.sleep(1)
-        # param = '{"id": 4, "method": "getTraderStatus", "params": {"symbol": "BTCUSD-PERP"}}'
-        # self.wsapp.send(param)
+
+    def getTraderStatus(self, name):
+        param = '{"id": 4, "method": "getTraderStatus", "params": {"symbol": "' + name + '"}}'
+        self.wsapp.send(param)
+
+    def placeOrder(self, param):
+        self.wsapp.send(param)
+
+    def cancelOrder(self, param):
+        self.wsapp.send(param)
+
+    def cancelAllOrders(self, param):
+        self.wsapp.send(param)
+
 
 class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
     user = ''
     psw = ''
-    currentEx = ''
-    current_spot_price = 0
-    current_cell_price = 0
-    last_cell_price = 0
-    current_central_cell = 0
-    current_dist = 0
+    current_spot_price = 0      #   текущая спот-цена
+    current_cell_price = 0      #   текущая тик-цена
+    last_cell_price = 0         #   прошлая тик-цена
+    current_central_cell = 0    #   текущая текущая центральнаая ячейка
+    current_dist = 0            #   текущее тик-расстояние
+    currentEx = ''              #   текущая валюта
+    currentLeverage = 5         #   текущее плечо
+    current_numconts = 1        #   текущий квадрат
+    current_opendist = 10       #   текущее расстояние открытия
+    current_closedist = 5       #   текущее расстояние закрытия
+    mainprocessflag = False     #   флаг автоторговли
 
     def __init__(self):
 
@@ -134,7 +156,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             msg_box.exec()
             sys.exit()
 
-        # отображение окна
+        # создание визуальной формы
         self.setupui(self)
 
         self.modelStair = QStandardItemModel()
@@ -152,6 +174,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
+
 
     def closeEvent(self, *args, **kwargs):
         if self.db.isOpen():
@@ -224,6 +247,85 @@ class MainWindow(QMainWindow, UiMainWindow):
         indexCell = self.tableViewStair.selectedIndexes()[0].siblingAtColumn(3)
         self.modelStair.setData(indexCell, 5, Qt.DisplayRole)
 
+    @pyqtSlot()
+    def slider_leverage_valueChanged(self):
+        self.slider_leverage_value.setText(str(self.sender().value()))
+        self.currentLeverage = self.sender().value()
+
+    @pyqtSlot()
+    def slider_leverage_value_editingFinished(self):
+        def outofrange(val):
+            self.slider_leverage_value.setText(str(val))
+            self.slider_leverage.setValue(val)
+            self.currentLeverage = val
+
+        v = self.sender().text()
+        if not v.isdigit():
+            outofrange(5)
+        elif int(v) < 5:
+            outofrange(5)
+        elif int(v) > 100:
+            outofrange(100)
+        else:
+            outofrange(int(v))
+
+    @pyqtSlot()
+    def slider_numconts_valueChanged(self):
+        self.slider_numconts_value.setText(str(self.sender().value()))
+        self.current_numconts = self.sender().value()
+
+    @pyqtSlot()
+    def slider_numconts_value_editingFinished(self):
+        def outofrange(val):
+            self.slider_numconts_value.setText(str(val))
+            self.slider_numconts.setValue(val)
+            self.current_numconts = val
+
+        v = self.sender().text()
+        if not v.isdigit():
+            outofrange(5)
+        elif int(v) < 5:
+            outofrange(5)
+        elif int(v) > 100:
+            outofrange(100)
+        else:
+            outofrange(int(v))
+
+    @pyqtSlot()
+    def lineeditopendist_editingFinished(self):
+        v = self.sender().text()
+        if not v.isdigit():
+            self.lineeditopendist.setText('10')
+            self.current_opendist = 10
+        elif int(v) < 1:
+            self.lineeditopendist.setText('1')
+            self.current_opendist = 1
+        else:
+            self.current_opendist = int(v)
+
+    @pyqtSlot()
+    def lineeditclosedist_editingFinished(self):
+        v = self.sender().text()
+        if not v.isdigit():
+            self.lineeditclosedist.setText('5')
+            self.current_closedist = 5
+        elif int(v) < 1:
+            self.lineeditclosedist.setText('1')
+            self.current_closedist = 1
+        else:
+            self.current_closedist = int(v)
+
+    @pyqtSlot()
+    def startbutton_clicked(self):
+        self.mainprocessflag = not self.mainprocessflag
+        if self.mainprocessflag:
+            self.startbutton.setText('СТОП')
+        else:
+            self.startbutton.setText('СТАРТ')
+
+    @pyqtSlot()
+    def button_closeall_clicked(self):
+        print('close all')
 
     def change_internal_bounds(self):
         self.modelStair.item(NUMROWS, 1).setData(self.current_central_cell, Qt.DisplayRole)
@@ -248,23 +350,31 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.modelStair.item(NUMROWS + ind, 0).setBackground(QColor(24, 68, 24))
         self.tableViewStair.dataChanged(self.qi1, self.qi2)
 
-    def message_index(self):
-         self.current_spot_price = self.dxthread.spotPx
+    def message_index(self, spotPx):
+         self.current_spot_price = spotPx
          self.labelprice.setText(str(self.current_spot_price))
          #self.graphicsView.repaint()
          self.current_cell_price = math.floor(self.current_spot_price / self.current_dist)*self.current_dist
 
-         if math.fabs(self.current_cell_price - self.current_central_cell) >= 10 * self.current_dist:
+         if math.fabs(self.current_cell_price - self.current_central_cell) >= 7 * self.current_dist:
              self.current_central_cell = self.current_cell_price
              self.change_internal_bounds()
 
          shift = int((self.current_cell_price - self.current_central_cell) / self.current_dist)
          for i in range(0, NUMROWS * 2 + 1):
-             if i == NUMROWS - shift - 1:
+             if i == NUMROWS - shift:
                 self.modelStair.item(i, 1).setBackground(QColor(24, 24, 68))
              else:
                  self.modelStair.item(i, 1).setBackground(QColor(0, 21, 25))
 
+    def message_tradingStatus(self, status):
+        if status:
+            self.statusbar.showMessage('Торговля разрешена')
+        else:
+            self.statusbar.showMessage('Торговля запрещена')
+
+    def message_traderStatus(self, data):
+        self.labelbalance.setText(str(data['traderBalance'])+' DGTX')
 
 app = QApplication([])
 win = MainWindow()
