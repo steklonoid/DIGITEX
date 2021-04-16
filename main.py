@@ -17,9 +17,7 @@ import json
 # import time
 
 NUMROWS = 50
-ex = {'BTCUSD-PERP':{'dist':5},'ETHUSD-PERP':{'dist':0.25}}
-ids = {'subscribe':1, 'unsubscribe':2, 'auth':3, 'getTraderStatus':4, 'placeOrder':5, 'cancelOrder':6, 'cancelAllOrders':7, 'changeLeverageAll':8}
-chanels = {'orderbook_25', 'index', 'ticker', 'trades', 'traderStatus', 'tradingStatus', 'orderStatus', 'orderFilled', 'orderCancelled'}
+ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
 
 class Order():
     def __init__(self, clOrdId, timestamp, openTime, orderType, timeInForce, orderSide, px, qty, leverage, paidPx, origClOrdId, origQty):
@@ -83,8 +81,8 @@ class WSThread(Thread):
 
     def run(self) -> None:
         def on_open(wsapp):
-            curex = self.pc.currentEx
-            self.pc.currentEx = ''
+            curex = self.pc.current_symbol
+            self.pc.current_symbol = ''
             self.pc.button1_clicked(curex)
 
         def on_message(wssapp, message):
@@ -97,7 +95,7 @@ class WSThread(Thread):
                     id = self.message.get('id')
                     status = self.message.get('status')
                     # if status == 'ok':
-                    #     self.getTraderStatus(self.pc.currentEx)
+                    #     self.getTraderStatus(self.pc.current_symbol)
                 if self.message.get('ch'):
                     channel = self.message.get('ch')
                     data = self.message['data']
@@ -142,10 +140,12 @@ class WSThread(Thread):
         self.wsapp.send(param)
         param = '{"id":22, "method":"subscribe", "params":["' + name + '@index"]}'
         self.wsapp.send(param)
-        param = '{"id":23, "method":"unsubscribe", "params":["' + lastname + '@trades"]}'
+        param = '{"id":23, "method":"subscribe", "params":["' + name + '@trades"]}'
         self.wsapp.send(param)
-        param = '{"id":24, "method":"unsubscribe", "params":["' + lastname + '@ticker"]}'
+        param = '{"id":24, "method":"subscribe", "params":["' + name + '@ticker"]}'
         self.wsapp.send(param)
+
+        self.getTraderStatus(name)
 
     def auth(self, ak):
         param = '{"id":3, "method":"auth", "params":{"type":"token", "value":"' + ak + '"}}'
@@ -174,13 +174,29 @@ class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
     user = ''
     psw = ''
+
+    curstate = {'symbol':'',                               #   текущая валюта
+                'traderBalance':0,
+                'leverage':0,
+                'orderMargin':0,
+                'positionMargin':0,
+                'upnl':0,
+                'pnl':0,
+                'positionType':'',
+                'positionContracts':0,
+                'positionVolume':0,
+                'positionLiquidationVolume':0,
+                'positionBankruptcyVolume':0,
+                'fundingRate':0,
+                'contractValue':0}
+
+    current_symbol = ''
+    current_leverage = 0
+
     current_spot_price = 0      #   текущая спот-цена
     current_cell_price = 0      #   текущая тик-цена
     last_cell_price = 0         #   прошлая тик-цена
     current_central_cell = 0    #   текущая текущая центральнаая ячейка
-    current_dist = 0            #   текущее тик-расстояние
-    currentEx = ''              #   текущая валюта
-    currentLeverage = 5         #   текущее плечо
     current_numconts = 1        #   текущий квадрат
     current_opendist = 10       #   текущее расстояние открытия
     current_closedist = 5       #   текущее расстояние закрытия
@@ -222,7 +238,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             msg_box.exec()
             sys.exit()
 
-        self.currentEx = 'BTCUSD-PERP'
+        self.current_symbol = 'BTCUSD-PERP'
         # создание визуальной формы
         self.setupui(self)
 
@@ -237,6 +253,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.qi2 = self.modelStair.createIndex(NUMROWS * 2, 2)
         self.qcenter = self.modelStair.createIndex(NUMROWS, 1)
         self.tableViewStair.scrollTo(self.qcenter)
+
+        self.modelorders = QStandardItemModel()
+        self.modelorders.setColumnCount(12)
+        self.tableViewOrders.setModel(self.modelorders)
+        self.tableViewOrders.hideColumn(0)
+        self.tableViewOrders.hideColumn(10)
+        self.modelorders.setHorizontalHeaderLabels(['clOrdId', 'timestamp', 'openTime', 'orderType', 'timeInForce', 'orderSide', 'px', 'qty', 'leverage', 'paidPx', 'origClOrdId', 'origQty'])
 
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
@@ -304,10 +327,10 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def button1_clicked(self, name):
-        if name != self.currentEx:
-            self.dxthread.changeEx(name, self.currentEx)
-            self.currentEx = name
-            self.current_dist = ex[self.currentEx]['dist']
+        if name != self.current_symbol:
+            self.dxthread.changeEx(name, self.current_symbol)
+            self.current_symbol = name
+            self.current_dist = ex[self.current_symbol]['TICK_SIZE']
 
     @pyqtSlot()
     def tableViewStairClicked(self):
@@ -317,7 +340,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     @pyqtSlot()
     def slider_leverage_valueChanged(self):
         self.slider_leverage_value.setText(str(self.sender().value()))
-        self.currentLeverage = self.sender().value()
 
     @pyqtSlot()
     def slider_leverage_value_editingFinished(self):
@@ -420,7 +442,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     def current_cell_price_changed(self):
         if self.mainprocessflag:
             pricetoBuy = self.current_cell_price - 15 * self.current_dist
-            self.dxthread.placeOrder(self.currentEx, 'BUY', pricetoBuy, 1)
+            self.dxthread.placeOrder(self.current_symbol, 'BUY', pricetoBuy, 1)
 
     def message_index(self, spotPx):
         self.current_spot_price = spotPx
@@ -445,14 +467,35 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_tradingStatus(self, status):
         if status:
             self.statusbar.showMessage('Торговля разрешена')
-            self.dxthread.getTraderStatus(self.currentEx)
+            self.dxthread.getTraderStatus(self.current_symbol)
         else:
             self.statusbar.showMessage('Торговля запрещена')
 
     def message_traderStatus(self, data):
         self.labelbalance.setText(str(data['traderBalance'])+' DGTX')
+
+        # self.curstate['traderBalance'] = data['traderBalance']
+        # self.curstate['orderMargin'] = data['orderMargin']
+        # self.curstate['positionMargin'] = data['positionMargin']
+        self.current_leverage = data['leverage']
+
+        self.modelorders.removeRows(0, self.modelorders.rowCount())
         for ord in data['activeOrders']:
-            self.unmatched_orders.append(Order(ord))
+            self.modelorders.appendRow([QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(),
+                                       QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()])
+            rownum = self.modelorders.rowCount() - 1
+            self.modelorders.item(rownum, 0).setData(ord['clOrdId'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 1).setData(ord['timestamp'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 2).setData(ord['openTime'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 3).setData(ord['orderType'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 4).setData(ord['timeInForce'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 5).setData(ord['orderSide'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 6).setData(ord['px'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 7).setData(ord['qty'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 8).setData(ord['leverage'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 9).setData(ord['paidPx'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 10).setData(ord['origClOrdId'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 11).setData(ord['origQty'], Qt.DisplayRole)
 
     def message_orderstatus(self, data):
         self.unmatched_orders.append('')
