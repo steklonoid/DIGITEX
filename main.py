@@ -2,74 +2,21 @@ import math
 import sys
 import os
 
-
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
-from PyQt5.QtGui import QStandardItem, QStandardItemModel, QColor, QFont
+from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
-from loginWindow import LoginWindow, AddAccount
+from loginWindow import LoginWindow, AddAccount, ChangeLeverage
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import websocket
 from threading import Thread
 import json
-# import time
+import time
 
 NUMROWS = 50
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
-
-class Order():
-    def __init__(self, clOrdId, timestamp, openTime, orderType, timeInForce, orderSide, px, qty, leverage, paidPx, origClOrdId, origQty):
-        self.clOrdId = clOrdId
-        self.timestamp = timestamp
-        self.openTime = openTime
-        self.orderType = orderType
-        self.timeInForce = timeInForce
-        self.orderSide = orderSide
-        self.px = px
-        self.qty = qty
-        self.leverage = leverage
-        self.paidPx = paidPx
-        self.origClOrdId = origClOrdId
-        self.origQty = origQty
-
-class Contract():
-    def __init__(self, timestamp, traderId, positionType, qty, entryPx, paidPx, liquidationPx, bankruptcyPx, exitPx, leverage, contractId, openTime, entryQty, exitQty, exitVolume, fundingPaidPx, fundingQty, fundingVolume, fundingCount, origContractId):
-        self.timestamp = timestamp
-        self.traderId = traderId
-        self.positionType = positionType
-        self.qty = qty
-        self.entryPx = entryPx
-        self.paidPx = paidPx
-        self.liquidationPx = liquidationPx
-        self.bankruptcyPx = bankruptcyPx
-        self.exitPx = exitPx
-        self.leverage = leverage
-        self.contractId = contractId
-        self.openTime = openTime
-        self.entryQty = entryQty
-        self.exitQty = exitQty
-        self.exitVolume = exitVolume
-        self.fundingPaidPx = fundingPaidPx
-        self.fundingQty = fundingQty
-        self.fundingVolume = fundingVolume
-        self.fundingCount = fundingCount
-        self.origContractId = origContractId
-
-
-class CellTable(QStandardItem):
-    def __init__(self):
-        QStandardItem.__init__(self)
-        self.setBackground(QColor(0, 21, 25))
-        self.setForeground(QColor(255, 255, 255))
-
-class CellTableClick(QStandardItem):
-    def __init__(self):
-        QStandardItem.__init__(self)
-        self.setBackground(QColor(90, 0, 157))
-        self.setForeground(QColor(255, 128, 0))
-        self.setFont(QFont("Helvetica", 14, QFont.Bold))
 
 class WSThread(Thread):
     def __init__(self, pc):
@@ -100,15 +47,13 @@ class WSThread(Thread):
                     channel = self.message.get('ch')
                     data = self.message['data']
                     if channel == 'orderbook_25':
-                        self.bids = data['bids']
-                        self.asks = data['asks']
-                        self.pc.message_orderbook()
+                        self.pc.message_orderbook(data)
                     elif channel == 'index':
-                        self.pc.message_index(data['spotPx'])
+                        self.pc.message_index(data)
                     elif channel == 'trades':
-                        print(self.message)
+                        self.pc.message_trades(data)
                     elif channel == 'ticker':
-                        print(self.message)
+                        self.pc.message_ticker(data)
                     elif channel == 'traderStatus':
                         self.pc.message_traderStatus(data)
                     elif channel == 'tradingStatus':
@@ -116,11 +61,11 @@ class WSThread(Thread):
                     elif channel == 'orderStatus':
                         self.pc.message_orderstatus(data)
                     elif channel == 'orderFilled':
-                        print(self.message)
+                        self.pc.message_orderFilled(data)
                     elif channel == 'orderCancelled':
-                        print(self.message)
+                        self.pc.message_orderCancelled(data)
                     elif channel == 'leverage':
-                        print(self.message)
+                        self.pc.message_leverage(data)
 
 
         self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_message=on_message)
@@ -157,16 +102,20 @@ class WSThread(Thread):
 
     def placeOrder(self, name, side, price, qty):
         param = '{"id": 5, "method": "placeOrder", "params": {"symbol": "' + name + '", "ordType": "LIMIT", "timeInForce": "GTC", "side": "' + side + '", "px": ' + str(price) + ', "qty": ' + str(qty) + '}}'
+        time.sleep(0.1)
         self.wsapp.send(param)
 
     def changeLeverage(self, name, leverage):
         param = '{"id":8, "method":"changeLeverageAll", "params":{"symbol":"' + name + '", "leverage":' + str(leverage) + '}}'
         self.wsapp.send(param)
 
-    def cancelOrder(self, param):
+    def cancelOrder(self, name, clOrdId):
+        param = '{"id":9, "method":"cancelOrder", "params":{"symbol":"' + name + '", "clOrdId":"' + clOrdId + '"}}'
+        time.sleep(0.1)
         self.wsapp.send(param)
 
-    def cancelAllOrders(self, param):
+    def cancelAllOrders(self, name, side, px):
+        param = '{"id":10, "method":"cancelAllOrders", "params":{"symbol":"' + name + '", "px":' + str(px) + ', "side":"' + side + '"}'
         self.wsapp.send(param)
 
 
@@ -175,34 +124,22 @@ class MainWindow(QMainWindow, UiMainWindow):
     user = ''
     psw = ''
 
-    curstate = {'symbol':'',                               #   текущая валюта
-                'traderBalance':0,
-                'leverage':0,
-                'orderMargin':0,
-                'positionMargin':0,
-                'upnl':0,
-                'pnl':0,
-                'positionType':'',
-                'positionContracts':0,
-                'positionVolume':0,
-                'positionLiquidationVolume':0,
-                'positionBankruptcyVolume':0,
-                'fundingRate':0,
-                'contractValue':0}
-
     current_symbol = ''
     current_leverage = 0
-
+    current_numconts = 1
+    current_traderBalance = 0
+    current_orderMargin = 0
+    current_contractValue = 0
     current_spot_price = 0      #   текущая спот-цена
     current_cell_price = 0      #   текущая тик-цена
     last_cell_price = 0         #   прошлая тик-цена
     current_central_cell = 0    #   текущая текущая центральнаая ячейка
-    current_numconts = 1        #   текущий квадрат
+    current_minclosedist = 5  # текущее расстояние закрытия
     current_opendist = 10       #   текущее расстояние открытия
-    current_closedist = 5       #   текущее расстояние закрытия
+    current_maxclosedist = 15  # текущее расстояние закрытия
     mainprocessflag = False     #   флаг автоторговли
 
-    unmatched_orders = []
+
 
     def __init__(self):
 
@@ -242,18 +179,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         # создание визуальной формы
         self.setupui(self)
 
-        self.modelStair = QStandardItemModel()
-        self.modelStair.setColumnCount(4)
-        self.tableViewStair.setModel(self.modelStair)
-        for i in range(0, NUMROWS * 2 + 1):
-            self.modelStair.appendRow([CellTable(), CellTable(), CellTable(), CellTableClick()])
-        self.tableViewStair.verticalHeader().close()
-        self.tableViewStair.horizontalHeader().close()
-        self.qi1 = self.modelStair.createIndex(0, 0)
-        self.qi2 = self.modelStair.createIndex(NUMROWS * 2, 2)
-        self.qcenter = self.modelStair.createIndex(NUMROWS, 1)
-        self.tableViewStair.scrollTo(self.qcenter)
-
         self.modelorders = QStandardItemModel()
         self.modelorders.setColumnCount(12)
         self.tableViewOrders.setModel(self.modelorders)
@@ -265,6 +190,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.dxthread.daemon = True
         self.dxthread.start()
 
+        self.show()
 
     def closeEvent(self, *args, **kwargs):
         if self.db.isOpen():
@@ -333,78 +259,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.current_dist = ex[self.current_symbol]['TICK_SIZE']
 
     @pyqtSlot()
-    def tableViewStairClicked(self):
-        indexCell = self.tableViewStair.selectedIndexes()[0].siblingAtColumn(3)
-        self.modelStair.setData(indexCell, 5, Qt.DisplayRole)
-
-    @pyqtSlot()
-    def slider_leverage_valueChanged(self):
-        self.slider_leverage_value.setText(str(self.sender().value()))
-
-    @pyqtSlot()
-    def slider_leverage_value_editingFinished(self):
-        def outofrange(val):
-            self.slider_leverage_value.setText(str(val))
-            self.slider_leverage.setValue(val)
-            self.currentLeverage = val
-
-        v = self.sender().text()
-        if not v.isdigit():
-            outofrange(5)
-        elif int(v) < 5:
-            outofrange(5)
-        elif int(v) > 100:
-            outofrange(100)
-        else:
-            outofrange(int(v))
-
-    @pyqtSlot()
-    def slider_numconts_valueChanged(self):
-        self.slider_numconts_value.setText(str(self.sender().value()))
-        self.current_numconts = self.sender().value()
-
-    @pyqtSlot()
-    def slider_numconts_value_editingFinished(self):
-        def outofrange(val):
-            self.slider_numconts_value.setText(str(val))
-            self.slider_numconts.setValue(val)
-            self.current_numconts = val
-
-        v = self.sender().text()
-        if not v.isdigit():
-            outofrange(5)
-        elif int(v) < 5:
-            outofrange(5)
-        elif int(v) > 100:
-            outofrange(100)
-        else:
-            outofrange(int(v))
-
-    @pyqtSlot()
-    def lineeditopendist_editingFinished(self):
-        v = self.sender().text()
-        if not v.isdigit():
-            self.lineeditopendist.setText('10')
-            self.current_opendist = 10
-        elif int(v) < 1:
-            self.lineeditopendist.setText('1')
-            self.current_opendist = 1
-        else:
-            self.current_opendist = int(v)
-
-    @pyqtSlot()
-    def lineeditclosedist_editingFinished(self):
-        v = self.sender().text()
-        if not v.isdigit():
-            self.lineeditclosedist.setText('5')
-            self.current_closedist = 5
-        elif int(v) < 1:
-            self.lineeditclosedist.setText('1')
-            self.current_closedist = 1
-        else:
-            self.current_closedist = int(v)
-
-    @pyqtSlot()
     def startbutton_clicked(self):
         self.mainprocessflag = not self.mainprocessflag
         if self.mainprocessflag:
@@ -416,36 +270,43 @@ class MainWindow(QMainWindow, UiMainWindow):
     def button_closeall_clicked(self):
         print('close all')
 
+    @pyqtSlot()
+    def buttonLeverage_clicked(self):
+        rw = ChangeLeverage()
+        rw.setupUi(self.current_leverage)
+        rw.leveragechanged.connect(lambda: self.dxthread.changeLeverage(self.current_symbol, rw.lineedit_leverage.text()))
+        rw.exec_()
+
+    def message_trades(self, data):
+        a = 1
+
+    def message_ticker(self, data):
+        self.current_contractValue = data['contractValue']
+
     def change_internal_bounds(self):
         self.modelStair.item(NUMROWS, 1).setData(self.current_central_cell, Qt.DisplayRole)
         for i in range(1, NUMROWS + 1):
             self.modelStair.item(NUMROWS - i, 1).setData(self.current_central_cell + i * self.current_dist, Qt.DisplayRole)
             self.modelStair.item(NUMROWS + i, 1).setData(self.current_central_cell - i * self.current_dist, Qt.DisplayRole)
 
-    def message_orderbook(self):
-        for i in range(0, NUMROWS * 2 + 1):
-            self.modelStair.item(i, 0).setData('', Qt.DisplayRole)
-            self.modelStair.item(i, 0).setBackground(QColor(28, 34, 34))
-            self.modelStair.item(i, 2).setData('', Qt.DisplayRole)
-            self.modelStair.item(i, 2).setBackground(QColor(28, 34, 34))
-        for i in range(0, 25):
-            ind = int((self.dxthread.asks[i][0] - self.current_central_cell) / self.current_dist)
-            if ind <= NUMROWS:
-                self.modelStair.item(NUMROWS - ind, 2).setData(self.dxthread.asks[i][1], Qt.DisplayRole)
-                self.modelStair.item(NUMROWS - ind, 2).setBackground(QColor(68, 24, 24))
-            ind = int((self.current_central_cell - self.dxthread.bids[i][0]) / self.current_dist)
-            if ind <= NUMROWS:
-                self.modelStair.item(NUMROWS + ind, 0).setData(self.dxthread.bids[i][1], Qt.DisplayRole)
-                self.modelStair.item(NUMROWS + ind, 0).setBackground(QColor(24, 68, 24))
-        self.tableViewStair.dataChanged(self.qi1, self.qi2)
-
     def current_cell_price_changed(self):
         if self.mainprocessflag:
-            pricetoBuy = self.current_cell_price - 15 * self.current_dist
-            self.dxthread.placeOrder(self.current_symbol, 'BUY', pricetoBuy, 1)
+            pricetoBuy = self.current_cell_price - self.current_opendist * self.current_dist
+            avbalance = self.current_traderBalance - self.current_orderMargin
+            req_margin = self.current_contractValue * self.current_numconts / self.current_leverage
+            if req_margin < avbalance:
+                self.dxthread.placeOrder(self.current_symbol, 'BUY', pricetoBuy, self.current_numconts)
 
-    def message_index(self, spotPx):
-        self.current_spot_price = spotPx
+            minPricetoClose = self.current_cell_price - self.current_minclosedist * self.current_dist
+            maxPricetoClose = self.current_cell_price - self.current_maxclosedist * self.current_dist
+            for i in range(0, self.modelorders.rowCount()):
+                px = self.modelorders.item(i, 6).data(Qt.DisplayRole)
+                clOrdId = self.modelorders.item(i, 0).data(3)
+                if px >= minPricetoClose or px <= maxPricetoClose:
+                    self.dxthread.cancelOrder(self.current_symbol, clOrdId)
+
+    def message_index(self, data):
+        self.current_spot_price = data['spotPx']
         self.labelprice.setText(str(self.current_spot_price))
         #self.graphicsView.repaint()
         self.current_cell_price = math.floor(self.current_spot_price / self.current_dist)*self.current_dist
@@ -457,14 +318,9 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.current_central_cell = self.current_cell_price
             self.change_internal_bounds()
 
-        shift = int((self.current_cell_price - self.current_central_cell) / self.current_dist)
-        for i in range(0, NUMROWS * 2 + 1):
-            if i == NUMROWS - shift:
-               self.modelStair.item(i, 1).setBackground(QColor(24, 24, 68))
-            else:
-                self.modelStair.item(i, 1).setBackground(QColor(0, 21, 25))
-
     def message_tradingStatus(self, status):
+        self.buttonLeverage.setEnabled(status)
+        self.startbutton.setEnabled(status)
         if status:
             self.statusbar.showMessage('Торговля разрешена')
             self.dxthread.getTraderStatus(self.current_symbol)
@@ -472,19 +328,17 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.statusbar.showMessage('Торговля запрещена')
 
     def message_traderStatus(self, data):
+        self.current_traderBalance = data['traderBalance']
         self.labelbalance.setText(str(data['traderBalance'])+' DGTX')
-
-        # self.curstate['traderBalance'] = data['traderBalance']
-        # self.curstate['orderMargin'] = data['orderMargin']
-        # self.curstate['positionMargin'] = data['positionMargin']
         self.current_leverage = data['leverage']
+        self.buttonLeverage.setText(str(data['leverage']) + ' x')
 
         self.modelorders.removeRows(0, self.modelorders.rowCount())
         for ord in data['activeOrders']:
             self.modelorders.appendRow([QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(),
                                        QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()])
             rownum = self.modelorders.rowCount() - 1
-            self.modelorders.item(rownum, 0).setData(ord['clOrdId'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 0).setData(ord['clOrdId'], 3)
             self.modelorders.item(rownum, 1).setData(ord['timestamp'], Qt.DisplayRole)
             self.modelorders.item(rownum, 2).setData(ord['openTime'], Qt.DisplayRole)
             self.modelorders.item(rownum, 3).setData(ord['orderType'], Qt.DisplayRole)
@@ -494,11 +348,53 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.modelorders.item(rownum, 7).setData(ord['qty'], Qt.DisplayRole)
             self.modelorders.item(rownum, 8).setData(ord['leverage'], Qt.DisplayRole)
             self.modelorders.item(rownum, 9).setData(ord['paidPx'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 10).setData(ord['origClOrdId'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 10).setData(ord['origClOrdId'], 3)
             self.modelorders.item(rownum, 11).setData(ord['origQty'], Qt.DisplayRole)
 
     def message_orderstatus(self, data):
-        self.unmatched_orders.append('')
+        self.current_traderBalance = data['traderBalance']
+        self.labelbalance.setText(str(data['traderBalance']) + ' DGTX')
+        self.current_leverage = data['leverage']
+        self.buttonLeverage.setText(str(data['leverage']) + ' x')
+        self.current_orderMargin = data['orderMargin']
+
+        if data['orderStatus'] == 'ACCEPTED':
+            self.modelorders.appendRow(
+                [QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(),
+                 QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()])
+            rownum = self.modelorders.rowCount() - 1
+            self.modelorders.item(rownum, 0).setData(data['clOrdId'], 3)
+            self.modelorders.item(rownum, 1).setData(data['timestamp'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 2).setData(data['openTime'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 3).setData(data['orderType'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 4).setData(data['timeInForce'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 5).setData(data['orderSide'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 6).setData(data['px'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 7).setData(data['qty'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 8).setData(data['leverage'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 9).setData(data['paidPx'], Qt.DisplayRole)
+            self.modelorders.item(rownum, 10).setData(data['origClOrdId'], 3)
+            self.modelorders.item(rownum, 11).setData(data['origQty'], Qt.DisplayRole)
+
+    def message_orderFilled(self, data):
+        self.current_traderBalance = data['traderBalance']
+        self.labelbalance.setText(str(data['traderBalance']) + ' DGTX')
+        self.current_leverage = data['leverage']
+        self.buttonLeverage.setText(str(data['leverage']) + ' x')
+        self.current_orderMargin = data['orderMargin']
+
+    def message_orderCancelled(self, data):
+        self.current_traderBalance = data['traderBalance']
+        self.labelbalance.setText(str(data['traderBalance']) + ' DGTX')
+        self.current_orderMargin = data['orderMargin']
+
+        for ordid in [x['origClOrdId'] for x in data['orders']]:
+            listindex = self.modelorders.match(self.modelorders.index(0, 10), 3, ordid)
+            for ind in listindex:
+                self.modelorders.removeRow(ind.row())
+
+    def message_leverage(self, data):
+        self.message_orderstatus(data)
 
 app = QApplication([])
 win = MainWindow()
