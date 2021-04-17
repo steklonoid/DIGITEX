@@ -255,3 +255,49 @@ class AddAccount(QDialog):
     @pyqtSlot()
     def buttonCancelClicked(self):
         self.done(0)
+
+class ChangeLeverage(QDialog):
+    leveragechanged = pyqtSignal()
+
+    def __init__(self):
+        QDialog.__init__(self)
+
+    def setupUi(self, leverage):
+        self.resize(320, 200)
+        sizePolicy = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.sizePolicy().hasHeightForWidth())
+        self.setWindowTitle("Изменение плеча")
+        self.setWindowIcon(QIcon("./images/siluet.png"))
+        self.setSizePolicy(sizePolicy)
+
+        vbox = QVBoxLayout(self)
+        self.lineedit_leverage = QLineEdit()
+        self.lineedit_leverage.setText(str(leverage))
+        self.lineedit_leverage.editingFinished.connect(self.lineedit_leverage_editingFinished)
+        vbox.addWidget(self.lineedit_leverage)
+        buttonBox = QDialogButtonBox()
+        buttonBox.setStandardButtons(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox.accepted.connect(self.buttonOkClicked)
+        buttonBox.rejected.connect(self.buttonCancelClicked)
+        vbox.addWidget(buttonBox)
+
+    @pyqtSlot()
+    def lineedit_leverage_editingFinished(self):
+        v = self.sender().text()
+        if not v.isdigit():
+            self.lineedit_leverage.setText('5')
+        elif int(v) < 1:
+            self.lineedit_leverage.setText('1')
+        elif int(v) > 100:
+            self.lineedit_leverage.setText('100')
+
+    @pyqtSlot()
+    def buttonOkClicked(self):
+        self.leveragechanged.emit()
+        self.done(0)
+
+    @pyqtSlot()
+    def buttonCancelClicked(self):
+        self.done(0)
