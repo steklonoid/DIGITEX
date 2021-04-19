@@ -1,6 +1,6 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QLineEdit
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QLineEdit, QCheckBox
 from PyQt5.QtGui import QIcon, QFont
 
 class UiMainWindow(object):
@@ -68,6 +68,22 @@ class UiMainWindow(object):
                 self.current_maxclosedist = 1
             else:
                 self.current_maxclosedist = int(v)
+
+        @pyqtSlot()
+        def le_marginpercent_editingFinished():
+            v = self.sender().text()
+            print(v)
+            if not v.isdigit():
+                self.sender().setText('50')
+                self.current_marginpercent = 1
+            elif int(v) < 1:
+                self.sender().setText('1')
+                self.current_marginpercent = 1
+            elif int(v) > 100:
+                self.sender().setText('100')
+                self.current_marginpercent = 100
+            else:
+                self.current_marginpercent = int(v)
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
@@ -153,43 +169,52 @@ class UiMainWindow(object):
         # расстояния открытия / закрытия
         self.openclosedistspacerwidget = QWidget()
         self.openclosedistspacer = QHBoxLayout(self.openclosedistspacerwidget)
-
         self.le_numcont = QLineEdit()
         self.le_numcont.setText('1')
         self.le_numcont.editingFinished.connect(le_numcont_editingFinished)
         self.openclosedistspacer.addWidget(QLabel('К-во контр.'))
         self.openclosedistspacer.addWidget(self.le_numcont)
-
         self.le_minclosedist = QLineEdit()
         self.le_minclosedist.setText('5')
         self.le_minclosedist.editingFinished.connect(le_minclosedist_editingFinished)
         self.openclosedistspacer.addWidget(QLabel('Мин. дист. закр.'))
         self.openclosedistspacer.addWidget(self.le_minclosedist)
-
         self.lineeditopendist = QLineEdit()
         self.lineeditopendist.setText('10')
         self.lineeditopendist.editingFinished.connect(le_opendist_editingFinished)
         self.openclosedistspacer.addWidget(QLabel('Дист. откр.'))
         self.openclosedistspacer.addWidget(self.lineeditopendist)
-
         self.le_maxclosedist = QLineEdit()
         self.le_maxclosedist.setText('15')
         self.le_maxclosedist.editingFinished.connect(le_maxclosedist_editingFinished)
         self.openclosedistspacer.addWidget(QLabel('Макс. дист. закр.'))
         self.openclosedistspacer.addWidget(self.le_maxclosedist)
-
         self.control_gridLayout.addWidget(self.openclosedistspacerwidget, 1, 0, 1, 1)
+        #   процент маржи, на который открываем
+        self.le_marginpercent = QLineEdit()
+        self.le_marginpercent.setText('50')
+        self.le_minclosedist.editingFinished.connect(le_marginpercent_editingFinished)
+        self.control_gridLayout.addWidget(self.le_marginpercent, 1, 1, 1, 1)
+        #    флажки покупки продажи
+        self.chb_buy = QCheckBox()
+        self.chb_buy.setText('BUY')
+        self.chb_buy.setCheckState(Qt.Checked)
+        self.control_gridLayout.addWidget(self.chb_buy, 2, 0, 1, 1)
+        self.chb_sell = QCheckBox()
+        self.chb_sell.setText('SELL')
+        self.chb_sell.setCheckState(Qt.Checked)
+        self.control_gridLayout.addWidget(self.chb_sell, 3, 0, 1, 1)
         # кнопка старт
         self.startbutton = QPushButton()
         self.startbutton.setText('СТАРТ')
         self.startbutton.setEnabled(False)
         self.startbutton.clicked.connect(self.startbutton_clicked)
-        self.control_gridLayout.addWidget(self.startbutton, 3, 0, 1, 3)
+        self.control_gridLayout.addWidget(self.startbutton, 4, 0, 1, 1)
         # кнопка закрыть все ордера
         self.button_closeall = QPushButton()
         self.button_closeall.setText('закрыть все ордера')
         self.button_closeall.clicked.connect(self.button_closeall_clicked)
-        self.control_gridLayout.addWidget(self.button_closeall, 3, 3, 1, 1)
+        self.control_gridLayout.addWidget(self.button_closeall, 4, 1, 1, 1)
 
         self.splitterv.addWidget(self.control_gridLayout_widget)
         self.gridLayout.addWidget(self.splitterv, 1, 0, 1, 2)

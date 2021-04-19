@@ -73,16 +73,16 @@ class WSThread(Thread):
 
     def changeEx(self, name, lastname):
         if lastname != '':
-            param = '{"id":11, "method":"unsubscribe", "params":["' + lastname + '@orderbook_25"]}'
-            self.wsapp.send(param)
+            # param = '{"id":11, "method":"unsubscribe", "params":["' + lastname + '@orderbook_25"]}'
+            # self.wsapp.send(param)
             param = '{"id":12, "method":"unsubscribe", "params":["' + lastname + '@index"]}'
             self.wsapp.send(param)
             param = '{"id":13, "method":"unsubscribe", "params":["' + lastname + '@trades"]}'
             self.wsapp.send(param)
             param = '{"id":14, "method":"unsubscribe", "params":["' + lastname + '@ticker"]}'
             self.wsapp.send(param)
-        param = '{"id":21, "method":"subscribe", "params":["' + name + '@orderbook_25"]}'
-        self.wsapp.send(param)
+        # param = '{"id":21, "method":"subscribe", "params":["' + name + '@orderbook_25"]}'
+        # self.wsapp.send(param)
         param = '{"id":22, "method":"subscribe", "params":["' + name + '@index"]}'
         self.wsapp.send(param)
         param = '{"id":23, "method":"subscribe", "params":["' + name + '@trades"]}'
@@ -137,6 +137,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     current_minclosedist = 5  # текущее расстояние закрытия
     current_opendist = 10       #   текущее расстояние открытия
     current_maxclosedist = 15  # текущее расстояние закрытия
+    current_marginpercent = 50  #   текущий процент маржи, на который открываем ордеры
     mainprocessflag = False     #   флаг автоторговли
 
 
@@ -292,24 +293,33 @@ class MainWindow(QMainWindow, UiMainWindow):
     def current_cell_price_changed(self):
         if self.mainprocessflag:
             pricetoBuy = self.current_cell_price - self.current_opendist * self.current_dist
+            pricetoSell = self.current_cell_price + self.current_opendist * self.current_dist
+
             avbalance = self.current_traderBalance - self.current_orderMargin
             req_margin = self.current_contractValue * self.current_numconts / self.current_leverage
-            if req_margin < avbalance:
-                self.dxthread.placeOrder(self.current_symbol, 'BUY', pricetoBuy, self.current_numconts)
+            print(req_margin, avbalance)
+            if req_margin < avbalance * self.current_marginpercent / 100:
+                if self.chb_buy.checkState() == Qt.Checked:
+                    self.dxthread.placeOrder(self.current_symbol, 'BUY', pricetoBuy, self.current_numconts)
+                if self.chb_sell.checkState() == Qt.Checked:
+                    self.dxthread.placeOrder(self.current_symbol, 'SELL', pricetoSell, self.current_numconts)
 
-            minPricetoClose = self.current_cell_price - self.current_minclosedist * self.current_dist
-            maxPricetoClose = self.current_cell_price - self.current_maxclosedist * self.current_dist
+            minPricetoCloseBuy = self.current_cell_price - self.current_minclosedist * self.current_dist
+            maxPricetoCloseBuy = self.current_cell_price - self.current_maxclosedist * self.current_dist
+            minPricetoCloseSell = self.current_cell_price + self.current_minclosedist * self.current_dist
+            maxPricetoCloseSell = self.current_cell_price + self.current_maxclosedist * self.current_dist
             for i in range(0, self.modelorders.rowCount()):
                 px = self.modelorders.item(i, 6).data(Qt.DisplayRole)
+                side = self.modelorders.item(i, 5).data(Qt.DisplayRole)
                 clOrdId = self.modelorders.item(i, 0).data(3)
-                if px >= minPricetoClose or px <= maxPricetoClose:
+                if ((px >= minPricetoCloseBuy or px <= maxPricetoCloseBuy) and side == 'BUY') or ((px <= minPricetoCloseSell or px >= maxPricetoCloseSell) and side == 'SELL'):
                     self.dxthread.cancelOrder(self.current_symbol, clOrdId)
 
     def message_index(self, data):
         self.current_spot_price = data['spotPx']
         self.labelprice.setText(str(self.current_spot_price))
         #self.graphicsView.repaint()
-        self.current_cell_price = math.floor(self.current_spot_price / self.current_dist)*self.current_dist
+        self.current_cell_price = math.floor(self.current_spot_price / self.current_dist) * self.current_dist
         if self.current_cell_price != self.last_cell_price:
             self.last_cell_price = self.current_cell_price
             self.current_cell_price_changed()
