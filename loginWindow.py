@@ -242,14 +242,13 @@ class AddAccount(QDialog):
         key = derived[IV_SIZE:]
         ak_encrypted = salt + AES.new(key, AES.MODE_CFB, iv).encrypt(ak)
         int_ak_encrypted = int.from_bytes(ak_encrypted, sys.byteorder)
-        q1 = QSqlQuery(self.db)
 
+        q1 = QSqlQuery(self.db)
         q1.prepare('INSERT OR IGNORE INTO accounts (userlogin, accname, apikey) VALUES (:userlogin, :accname, :apikey)')
         q1.bindValue(":userlogin", self.user)
         q1.bindValue(":accname", self.lineEditNameAccount.text())
         q1.bindValue(":apikey", str(int_ak_encrypted))
         q1.exec_()
-        self.accountadded.emit()
         self.done(0)
 
     @pyqtSlot()

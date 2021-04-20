@@ -20,7 +20,6 @@ class UiMainWindow(object):
         @pyqtSlot()
         def le_numcont_editingFinished():
             v = self.sender().text()
-            print(v)
             if not v.isdigit():
                 self.sender().setText('1')
                 self.current_numconts = 1
@@ -34,60 +33,20 @@ class UiMainWindow(object):
                 self.current_numconts = int(v)
 
         @pyqtSlot()
-        def le_minclosedist_editingFinished():
-            v = self.sender().text()
-            if not v.isdigit():
-                self.sender().setText('5')
-                self.current_minclosedist = 5
-            elif int(v) < 1:
-                self.sender().setText('1')
-                self.current_minclosedist = 1
-            else:
-                self.current_minclosedist = int(v)
-
-        @pyqtSlot()
-        def le_opendist_editingFinished():
+        def le_orderdist_editingFinished():
             v = self.sender().text()
             if not v.isdigit():
                 self.sender().setText('10')
-                self.current_opendist = 10
+                self.current_orderdist = 10
             elif int(v) < 1:
                 self.sender().setText('1')
-                self.current_opendist = 1
+                self.current_orderdist = 1
             else:
-                self.current_opendist = int(v)
-
-        @pyqtSlot()
-        def le_maxclosedist_editingFinished():
-            v = self.sender().text()
-            if not v.isdigit():
-                self.sender().setText('15')
-                self.current_maxclosedist = 15
-            elif int(v) < 1:
-                self.sender().setText('1')
-                self.current_maxclosedist = 1
-            else:
-                self.current_maxclosedist = int(v)
-
-        @pyqtSlot()
-        def le_marginpercent_editingFinished():
-            v = self.sender().text()
-            print(v)
-            if not v.isdigit():
-                self.sender().setText('50')
-                self.current_marginpercent = 1
-            elif int(v) < 1:
-                self.sender().setText('1')
-                self.current_marginpercent = 1
-            elif int(v) > 100:
-                self.sender().setText('100')
-                self.current_marginpercent = 100
-            else:
-                self.current_marginpercent = int(v)
+                self.current_orderdist = int(v)
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Trading")
+        mainwindow.setWindowTitle("Digitex Trading v1.0.5")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -174,36 +133,23 @@ class UiMainWindow(object):
         self.le_numcont.editingFinished.connect(le_numcont_editingFinished)
         self.openclosedistspacer.addWidget(QLabel('К-во контр.'))
         self.openclosedistspacer.addWidget(self.le_numcont)
-        self.le_minclosedist = QLineEdit()
-        self.le_minclosedist.setText('5')
-        self.le_minclosedist.editingFinished.connect(le_minclosedist_editingFinished)
-        self.openclosedistspacer.addWidget(QLabel('Мин. дист. закр.'))
-        self.openclosedistspacer.addWidget(self.le_minclosedist)
-        self.lineeditopendist = QLineEdit()
-        self.lineeditopendist.setText('10')
-        self.lineeditopendist.editingFinished.connect(le_opendist_editingFinished)
-        self.openclosedistspacer.addWidget(QLabel('Дист. откр.'))
-        self.openclosedistspacer.addWidget(self.lineeditopendist)
-        self.le_maxclosedist = QLineEdit()
-        self.le_maxclosedist.setText('15')
-        self.le_maxclosedist.editingFinished.connect(le_maxclosedist_editingFinished)
-        self.openclosedistspacer.addWidget(QLabel('Макс. дист. закр.'))
-        self.openclosedistspacer.addWidget(self.le_maxclosedist)
+
+        self.le_orderdist = QLineEdit()
+        self.le_orderdist.setText('10')
+        self.le_orderdist.editingFinished.connect(le_orderdist_editingFinished)
+        self.openclosedistspacer.addWidget(QLabel('Дистанция ордера'))
+        self.openclosedistspacer.addWidget(self.le_orderdist)
         self.control_gridLayout.addWidget(self.openclosedistspacerwidget, 1, 0, 1, 1)
-        #   процент маржи, на который открываем
-        self.le_marginpercent = QLineEdit()
-        self.le_marginpercent.setText('50')
-        self.le_minclosedist.editingFinished.connect(le_marginpercent_editingFinished)
-        self.control_gridLayout.addWidget(self.le_marginpercent, 1, 1, 1, 1)
+
         #    флажки покупки продажи
-        self.chb_buy = QCheckBox()
-        self.chb_buy.setText('BUY')
-        self.chb_buy.setCheckState(Qt.Checked)
-        self.control_gridLayout.addWidget(self.chb_buy, 2, 0, 1, 1)
         self.chb_sell = QCheckBox()
         self.chb_sell.setText('SELL')
         self.chb_sell.setCheckState(Qt.Checked)
-        self.control_gridLayout.addWidget(self.chb_sell, 3, 0, 1, 1)
+        self.control_gridLayout.addWidget(self.chb_sell, 2, 0, 1, 1)
+        self.chb_buy = QCheckBox()
+        self.chb_buy.setText('BUY')
+        self.chb_buy.setCheckState(Qt.Checked)
+        self.control_gridLayout.addWidget(self.chb_buy, 3, 0, 1, 1)
         # кнопка старт
         self.startbutton = QPushButton()
         self.startbutton.setText('СТАРТ')
