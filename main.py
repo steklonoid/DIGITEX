@@ -114,8 +114,8 @@ class WSThread(Thread):
         time.sleep(0.1)
         self.wsapp.send(param)
 
-    def cancelAllOrders(self, name, side, px):
-        param = '{"id":10, "method":"cancelAllOrders", "params":{"symbol":"' + name + '", "px":' + str(px) + ', "side":"' + side + '"}'
+    def cancelAllOrders(self, name):
+        param = '{"id":10, "method":"cancelAllOrders", "params":{"symbol":"' + name + '"}}'
         self.wsapp.send(param)
 
 
@@ -131,13 +131,11 @@ class MainWindow(QMainWindow, UiMainWindow):
     current_orderMargin = 0
     current_contractValue = 0
     current_spot_price = 0      #   текущая спот-цена
+    current_markprice = 0
     current_cell_price = 0      #   текущая тик-цена
     last_cell_price = 0         #   прошлая тик-цена
     current_central_cell = 0    #   текущая текущая центральнаая ячейка
-    current_minclosedist = 5  # текущее расстояние закрытия
-    current_opendist = 10       #   текущее расстояние открытия
-    current_maxclosedist = 15  # текущее расстояние закрытия
-    current_marginpercent = 50  #   текущий процент маржи, на который открываем ордеры
+    current_orderdist = 10       #   текущее расстояние ордера
     mainprocessflag = False     #   флаг автоторговли
 
 
@@ -269,7 +267,7 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def button_closeall_clicked(self):
-        print('close all')
+        self.dxthread.cancelAllOrders(self.current_symbol)
 
     @pyqtSlot()
     def buttonLeverage_clicked(self):
@@ -284,49 +282,39 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_ticker(self, data):
         self.current_contractValue = data['contractValue']
 
-    def change_internal_bounds(self):
-        self.modelStair.item(NUMROWS, 1).setData(self.current_central_cell, Qt.DisplayRole)
-        for i in range(1, NUMROWS + 1):
-            self.modelStair.item(NUMROWS - i, 1).setData(self.current_central_cell + i * self.current_dist, Qt.DisplayRole)
-            self.modelStair.item(NUMROWS + i, 1).setData(self.current_central_cell - i * self.current_dist, Qt.DisplayRole)
-
     def current_cell_price_changed(self):
+        # завершаем ордеры, которые находятся не на расстоянии дистанции или количество не равно количеству открываемых контрактов
+        priceDistBuy = self.current_cell_price - self.current_orderdist * self.current_dist
+        priceDistSell = self.current_cell_price + self.current_orderdist * self.current_dist
+        for i in range(0, self.modelorders.rowCount()):
+            side = self.modelorders.item(i, 5).data(Qt.DisplayRole)
+            px = self.modelorders.item(i, 6).data(Qt.DisplayRole)
+            qty = self.modelorders.item(i, 7).data(Qt.DisplayRole)
+            clOrdId = self.modelorders.item(i, 0).data(3)
+            if (px != priceDistBuy and side == 'BUY') or (px != priceDistSell and side == 'SELL') or (qty != self.current_numconts):
+                self.dxthread.cancelOrder(self.current_symbol, clOrdId)
+
+        # открываем ордеры
         if self.mainprocessflag:
-            pricetoBuy = self.current_cell_price - self.current_opendist * self.current_dist
-            pricetoSell = self.current_cell_price + self.current_opendist * self.current_dist
+            pricetoBuy = self.current_cell_price - self.current_orderdist * self.current_dist
+            pricetoSell = self.current_cell_price + self.current_orderdist * self.current_dist
 
             avbalance = self.current_traderBalance - self.current_orderMargin
             req_margin = self.current_contractValue * self.current_numconts / self.current_leverage
-            print(req_margin, avbalance)
-            if req_margin < avbalance * self.current_marginpercent / 100:
+            if req_margin < avbalance:
                 if self.chb_buy.checkState() == Qt.Checked:
                     self.dxthread.placeOrder(self.current_symbol, 'BUY', pricetoBuy, self.current_numconts)
                 if self.chb_sell.checkState() == Qt.Checked:
                     self.dxthread.placeOrder(self.current_symbol, 'SELL', pricetoSell, self.current_numconts)
 
-            minPricetoCloseBuy = self.current_cell_price - self.current_minclosedist * self.current_dist
-            maxPricetoCloseBuy = self.current_cell_price - self.current_maxclosedist * self.current_dist
-            minPricetoCloseSell = self.current_cell_price + self.current_minclosedist * self.current_dist
-            maxPricetoCloseSell = self.current_cell_price + self.current_maxclosedist * self.current_dist
-            for i in range(0, self.modelorders.rowCount()):
-                px = self.modelorders.item(i, 6).data(Qt.DisplayRole)
-                side = self.modelorders.item(i, 5).data(Qt.DisplayRole)
-                clOrdId = self.modelorders.item(i, 0).data(3)
-                if ((px >= minPricetoCloseBuy or px <= maxPricetoCloseBuy) and side == 'BUY') or ((px <= minPricetoCloseSell or px >= maxPricetoCloseSell) and side == 'SELL'):
-                    self.dxthread.cancelOrder(self.current_symbol, clOrdId)
-
     def message_index(self, data):
         self.current_spot_price = data['spotPx']
         self.labelprice.setText(str(self.current_spot_price))
-        #self.graphicsView.repaint()
-        self.current_cell_price = math.floor(self.current_spot_price / self.current_dist) * self.current_dist
+        self.current_markprice = data['markPx']
+        self.current_cell_price = math.floor(self.current_markprice / self.current_dist) * self.current_dist
         if self.current_cell_price != self.last_cell_price:
             self.last_cell_price = self.current_cell_price
             self.current_cell_price_changed()
-
-        if math.fabs(self.current_cell_price - self.current_central_cell) >= 7 * self.current_dist:
-            self.current_central_cell = self.current_cell_price
-            self.change_internal_bounds()
 
     def message_tradingStatus(self, status):
         self.buttonLeverage.setEnabled(status)
@@ -362,8 +350,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.modelorders.item(rownum, 11).setData(ord['origQty'], Qt.DisplayRole)
 
     def message_orderstatus(self, data):
-        self.current_traderBalance = data['traderBalance']
-        self.labelbalance.setText(str(data['traderBalance']) + ' DGTX')
         self.current_leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
         self.current_orderMargin = data['orderMargin']
@@ -393,9 +379,12 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
         self.current_orderMargin = data['orderMargin']
 
+        ordid = data['origClOrdId']
+        listindex = self.modelorders.match(self.modelorders.index(0, 10), 3, ordid)
+        for ind in listindex:
+            self.modelorders.removeRow(ind.row())
+
     def message_orderCancelled(self, data):
-        self.current_traderBalance = data['traderBalance']
-        self.labelbalance.setText(str(data['traderBalance']) + ' DGTX')
         self.current_orderMargin = data['orderMargin']
 
         for ordid in [x['origClOrdId'] for x in data['orders']]:
