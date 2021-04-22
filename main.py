@@ -17,6 +17,13 @@ import time
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
 
+class Order():
+    def __init__(self, **kwargs):
+        self.clOrdId = kwargs['clOrdId']
+        self.orderSide = kwargs['orderSide']
+        self.px = kwargs['px']
+        self.qty = kwargs['qty']
+
 class WSThread(Thread):
     methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6, 'cancelAllOrders':7, 'placeCondOrder':8, 'cancelCondOrder':9, 'closeContract':10, 'closePosition':11, 'getTraderStatus':12, 'changeLeverageAll':13}
     channels = ['orderbook', 'kline', 'trades', 'liquidations', 'ticker', 'fundingInfo', 'index', 'tradingStatus', 'orderStatus', 'orderFilled', 'orderCancelled', 'condOrderStatus', 'contractClosed', 'traderStatus', 'leverage', 'funding', 'position']
@@ -99,12 +106,16 @@ class MainWindow(QMainWindow, UiMainWindow):
         'traderBalance': 0,
         'orderMargin': 0,
         'contractValue': 0,
-        'spot_price': 0,
-        'mark_price': 0
+        'spotPx': 0,
+        'markPx': 0
                     }
 
     current_cell_price = 0      #   текущая тик-цена
     last_cell_price = 0         #   прошлая тик-цена
+    current_dist = 0
+
+    listOrders = []
+    listContracts = []
 
     def __init__(self):
 
@@ -142,12 +153,8 @@ class MainWindow(QMainWindow, UiMainWindow):
         # создание визуальной формы
         self.setupui(self)
 
-        self.modelorders = QStandardItemModel()
-        self.modelorders.setColumnCount(12)
-        self.tableViewOrders.setModel(self.modelorders)
-        self.tableViewOrders.hideColumn(0)
-        self.tableViewOrders.hideColumn(10)
-        self.modelorders.setHorizontalHeaderLabels(['clOrdId', 'timestamp', 'openTime', 'orderType', 'timeInForce', 'orderSide', 'px', 'qty', 'leverage', 'paidPx', 'origClOrdId', 'origQty'])
+
+        # self.modelorders.setHorizontalHeaderLabels(['clOrdId', 'timestamp', 'openTime', 'orderType', 'timeInForce', 'orderSide', 'px', 'qty', 'leverage', 'paidPx', 'origClOrdId', 'origQty'])
 
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
@@ -212,8 +219,8 @@ class MainWindow(QMainWindow, UiMainWindow):
     def button1_clicked(self, name):
         if name != self.current_symbol:
             self.dxthread.changeEx(name, self.current_symbol)
-            self.current_symbol = name
-            self.current_dist = ex[self.current_symbol]['TICK_SIZE']
+            self.cur_innerstate['symbol'] = name
+            self.current_dist = ex[name]['TICK_SIZE']
 
     @pyqtSlot()
     def startbutton_clicked(self):
@@ -258,8 +265,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
         def current_cell_price_changed():
             # завершаем ордеры, которые находятся не на расстоянии дистанции или количество не равно количеству открываемых контрактов
-            priceDistBuy = self.current_cell_price - self.current_orderdist * self.current_dist
-            priceDistSell = self.current_cell_price + self.current_orderdist * self.current_dist
+            priceDistBuy = self.current_cell_price - self.cur_innerstate['orderDist'] * self.current_dist
+            priceDistSell = self.current_cell_price + self.cur_innerstate['orderDist'] * self.current_dist
             for i in range(0, self.modelorders.rowCount()):
                 side = self.modelorders.item(i, 5).data(Qt.DisplayRole)
                 px = self.modelorders.item(i, 6).data(Qt.DisplayRole)
@@ -269,10 +276,9 @@ class MainWindow(QMainWindow, UiMainWindow):
                         qty != self.current_numconts):
                     self.dxthread.send_privat('cancelOrder', symbol=self.current_symbol, clOrdId=clOrdId)
 
-        self.current_spot_price = data['spotPx']
-        # self.labelprice.setText(str(self.current_spot_price))
-        self.current_markprice = data['markPx']
-        self.current_cell_price = math.floor(self.current_markprice / self.current_dist) * self.current_dist
+        self.cur_outerstate['spotPx'] = data['spotPx']
+        self.cur_outerstate['markPx'] = data['markPx']
+        self.current_cell_price = math.floor(self.cur_outerstate['spotPx'] / self.current_dist) * self.current_dist
         if self.current_cell_price != self.last_cell_price:
             self.last_cell_price = self.current_cell_price
             current_cell_price_changed()
@@ -308,34 +314,17 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.buttonAK.setText('не верный api key\nнажмите здесь для изменения')
 
     def message_orderstatus(self, data):
-        self.current_leverage = data['leverage']
+        self.cur_outerstate['leverage'] = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
-        self.current_orderMargin = data['orderMargin']
-
+        self.cur_outerstate['orderMargin'] = data['orderMargin']
         if data['orderStatus'] == 'ACCEPTED':
-            self.modelorders.appendRow(
-                [QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(),
-                 QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()])
-            rownum = self.modelorders.rowCount() - 1
-            self.modelorders.item(rownum, 0).setData(data['clOrdId'], 3)
-            self.modelorders.item(rownum, 1).setData(data['timestamp'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 2).setData(data['openTime'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 3).setData(data['orderType'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 4).setData(data['timeInForce'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 5).setData(data['orderSide'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 6).setData(data['px'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 7).setData(data['qty'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 8).setData(data['leverage'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 9).setData(data['paidPx'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 10).setData(data['origClOrdId'], 3)
-            self.modelorders.item(rownum, 11).setData(data['origQty'], Qt.DisplayRole)
+            self.listOrders.append(Order(clOrdId=data['clOrdId'], orderSide=data['orderSide'], px=data['px'], qty=data['qty']))
 
     def message_orderFilled(self, data):
-        self.current_traderBalance = data['traderBalance']
-        # self.labelbalance.setText(str(data['traderBalance']) + ' DGTX')
-        self.current_leverage = data['leverage']
+        self.cur_outerstate['traderBalance'] = data['traderBalance']
+        self.cur_outerstate['leverage'] = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
-        self.current_orderMargin = data['orderMargin']
+        self.cur_outerstate['orderMargin'] = data['orderMargin']
 
         ordid = data['origClOrdId']
         listindex = self.modelorders.match(self.modelorders.index(0, 10), 3, ordid)
@@ -343,12 +332,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.modelorders.removeRow(ind.row())
 
     def message_orderCancelled(self, data):
-        self.current_orderMargin = data['orderMargin']
-
-        for ordid in [x['origClOrdId'] for x in data['orders']]:
-            listindex = self.modelorders.match(self.modelorders.index(0, 10), 3, ordid)
-            for ind in listindex:
-                self.modelorders.removeRow(ind.row())
+        self.cur_outerstate['orderMargin'] = data['orderMargin']
 
     def message_condOrderStatus(self, data):
         a = data
@@ -357,31 +341,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         a = data
 
     def message_traderStatus(self, data):
-        self.current_traderBalance = data['traderBalance']
-        # self.labelbalance.setText(str(data['traderBalance'])+' DGTX')
-        self.current_leverage = data['leverage']
+        self.cur_outerstate['traderBalance'] = data['traderBalance']
+        self.cur_outerstate['leverage'] = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
 
-        self.modelorders.removeRows(0, self.modelorders.rowCount())
-        for ord in data['activeOrders']:
-            self.modelorders.appendRow([QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(),
-                                       QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem(), QStandardItem()])
-            rownum = self.modelorders.rowCount() - 1
-            self.modelorders.item(rownum, 0).setData(ord['clOrdId'], 3)
-            self.modelorders.item(rownum, 1).setData(ord['timestamp'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 2).setData(ord['openTime'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 3).setData(ord['orderType'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 4).setData(ord['timeInForce'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 5).setData(ord['orderSide'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 6).setData(ord['px'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 7).setData(ord['qty'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 8).setData(ord['leverage'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 9).setData(ord['paidPx'], Qt.DisplayRole)
-            self.modelorders.item(rownum, 10).setData(ord['origClOrdId'], 3)
-            self.modelorders.item(rownum, 11).setData(ord['origQty'], Qt.DisplayRole)
-
     def message_leverage(self, data):
-        a = data
+        self.cur_outerstate['leverage'] = data['leverage']
+        self.buttonLeverage.setText(str(data['leverage']) + ' x')
 
     def message_funding(self, data):
         a = data

@@ -1,7 +1,19 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QComboBox, QSplitter, QTableView, QLineEdit, QCheckBox
-from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QSplitter, QLineEdit, QCheckBox, QSizePolicy
+from PyQt5.QtGui import QIcon, QPainter
+
+class DisplayField(QWidget):
+    def __init__(self):
+        QWidget.__init__(self)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        width = painter.viewport().width()  # текущая ширина окна рисования
+        height = painter.viewport().height()  # текущая высота окна рисования
+        painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
 
 class UiMainWindow(object):
     def __init__(self):
@@ -107,8 +119,14 @@ class UiMainWindow(object):
 
         #   горизонтальный сплиттер, делящий остальное пространство внизу на две части
         self.splitterv = QSplitter(Qt.Vertical)
-        self.tableViewOrders = QTableView()
-        self.splitterv.addWidget(self.tableViewOrders)
+        self.splitterh = QSplitter(Qt.Horizontal)
+        self.graphicsview = DisplayField()
+        self.splitterh.addWidget(self.graphicsview)
+        self.infovspacerwidget = QWidget()
+        self.infovspacer = QVBoxLayout(self.infovspacerwidget)
+        self.splitterh.addWidget(self.infovspacerwidget)
+        self.splitterh.setSizes([50, 50])
+        self.splitterv.addWidget(self.splitterh)
         self.control_gridLayout_widget = QWidget()
         self.control_gridLayout = QGridLayout(self.control_gridLayout_widget)
 
@@ -129,7 +147,6 @@ class UiMainWindow(object):
         self.le_numcont.editingFinished.connect(le_numcont_editingFinished)
         self.openclosedistspacer.addWidget(QLabel('К-во контр.'))
         self.openclosedistspacer.addWidget(self.le_numcont)
-
         self.le_orderdist = QLineEdit()
         self.le_orderdist.setText('10')
         self.le_orderdist.editingFinished.connect(le_orderdist_editingFinished)
@@ -159,6 +176,7 @@ class UiMainWindow(object):
         self.control_gridLayout.addWidget(self.button_closeall, 4, 1, 1, 1)
 
         self.splitterv.addWidget(self.control_gridLayout_widget)
+        self.splitterv.setSizes([200, 100])
         self.gridLayout.addWidget(self.splitterv, 1, 0, 1, 2)
 
         self.statusbar = QStatusBar(mainwindow)
