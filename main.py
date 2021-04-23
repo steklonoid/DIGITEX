@@ -14,6 +14,7 @@ import websocket
 from threading import Thread
 import json
 import time
+import math
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
 
@@ -68,7 +69,7 @@ class WSThread(Thread):
 
     def changeEx(self, name, lastname):
         if lastname != '':
-            self.send_public('unsubscribe', name + '@index', name + '@trades', name + '@ticker')
+            self.send_public('unsubscribe', lastname + '@index', lastname + '@trades', lastname + '@ticker')
         self.send_public('subscribe', name + '@index', name + '@trades', name + '@ticker')
         self.send_privat('getTraderStatus', symbol=name)
 
@@ -83,7 +84,10 @@ class WSThread(Thread):
     def send_privat(self, method, **params):
         pd = {'id':self.methods.get(method), 'method':method, 'params':params}
         strpar = json.dumps(pd)
-        self.wsapp.send(strpar)
+        try:
+            self.wsapp.send(strpar)
+        except:
+            print('Ошибка')
         time.sleep(0.1)
 
 
@@ -96,7 +100,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     cur_innerstate = {
             'symbol':'BTCUSD-PERP',
             'numconts':1,
-            'orderdist':10,
+            'orderdist':5,
             'tradingFlag':False,
             'authFlag':False
                     }
@@ -107,7 +111,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         'orderMargin': 0,
         'contractValue': 0,
         'spotPx': 0,
-        'markPx': 0
+        'markPx': 0,
+        'fairPx':0,
+        'dgtxUsdRate':0
                     }
 
     current_cell_price = 0      #   текущая тик-цена
@@ -217,8 +223,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def button1_clicked(self, name):
-        if name != self.current_symbol:
-            self.dxthread.changeEx(name, self.current_symbol)
+        if name != self.cur_innerstate['symbol']:
+            self.dxthread.changeEx(name, self.cur_innerstate['symbol'])
             self.cur_innerstate['symbol'] = name
             self.current_dist = ex[name]['TICK_SIZE']
 
@@ -256,7 +262,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         a = data
 
     def message_ticker(self, data):
-        self.current_contractValue = data['contractValue']
+        self.cur_outerstate['dgtxUsdRate'] = data['dgtxUsdRate']
 
     def message_fundingInfo(self, data):
         a = data
@@ -277,7 +283,12 @@ class MainWindow(QMainWindow, UiMainWindow):
                     self.dxthread.send_privat('cancelOrder', symbol=self.current_symbol, clOrdId=clOrdId)
 
         self.cur_outerstate['spotPx'] = data['spotPx']
+        self.l_spot.setText(str(data['spotPx']))
         self.cur_outerstate['markPx'] = data['markPx']
+        self.l_mark.setText(str(data['markPx']))
+        self.cur_outerstate['fairPx'] = data['fairPx']
+        self.l_fair.setText(str(data['fairPx']))
+
         self.current_cell_price = math.floor(self.cur_outerstate['spotPx'] / self.current_dist) * self.current_dist
         if self.current_cell_price != self.last_cell_price:
             self.last_cell_price = self.current_cell_price
@@ -307,7 +318,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.statusbar.showMessage('Торговля разрешена')
             self.buttonAK.setStyleSheet("color:rgb(32, 192, 32);font: bold 11px; border: none;")
             self.buttonAK.setText('верный api key')
-            self.dxthread.send_privat('getTraderStatus', symbol=self.current_symbol)
+            self.dxthread.send_privat('getTraderStatus', symbol=self.cur_outerstate['symbol'])
         else:
             self.statusbar.showMessage('Торговля запрещена')
             self.buttonAK.setStyleSheet("color:rgb(192, 32, 32);font: bold 11px; border: none;")
@@ -342,6 +353,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_traderStatus(self, data):
         self.cur_outerstate['traderBalance'] = data['traderBalance']
+        self.l_balance_dgtx.setText(str(data['traderBalance']))
+        self.l_balance_usd.setText(str(round(data['traderBalance'] * self.cur_outerstate['dgtxUsdRate'], 2)))
         self.cur_outerstate['leverage'] = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
 
