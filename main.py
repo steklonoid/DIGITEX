@@ -53,7 +53,10 @@ class MainWindow(QMainWindow, UiMainWindow):
         'pnl':0,
         'upnl':0
                     }
-
+    channels = {'orderbook_1': [], 'kline': [], 'trades': [], 'liquidations': [], 'ticker': [], 'fundingInfo': [],
+                'index': [], 'tradingStatus': [], 'orderStatus': [], 'orderFilled': [], 'orderCancelled': [],
+                'condOrderStatus': [], 'contractClosed': [], 'traderStatus': [], 'leverage': [], 'funding': [],
+                'position': []}
     current_cell_price = 0      #   текущая тик-цена
     last_cell_price = 0         #   прошлая тик-цена
     current_dist = 0
@@ -96,7 +99,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         # создание визуальной формы
         self.setupui(self)
         self.show()
-
+        time.sleep(1)
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
