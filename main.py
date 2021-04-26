@@ -1,5 +1,6 @@
 import sys
 import os
+import threading
 import time
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
@@ -8,7 +9,7 @@ from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
-from wss import WSThread
+from wss import WSThread, SuperViser
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
@@ -46,6 +47,8 @@ class MainWindow(QMainWindow, UiMainWindow):
         'spotPx': 0,
         'markPx': 0,
         'fairPx':0,
+        'maxBid':0,
+        'minAsk':0,
         'dgtxUsdRate':0,
         'pnl':0,
         'upnl':0
@@ -55,6 +58,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     last_cell_price = 0         #   прошлая тик-цена
     current_dist = 0
 
+    message_queue = []
     listOrders = []
     listContracts = []
 
@@ -79,7 +83,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             else:
                 return False
 
-
         super().__init__()
 
         #  подключаем базу SQLite
@@ -97,6 +100,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
+        self.sv = SuperViser(self)
+        self.sv.daemon = True
+        self.sv.start()
 
     def closeEvent(self, *args, **kwargs):
         if self.db.isOpen():
@@ -182,8 +188,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         a = id
     # ========== обработчики сообщений ===========
     # ==== публичные сообщения
-    def message_orderbook(self, data):
-        a = data
+    def message_orderbook_1(self, data):
+        self.cur_state['maxBid'] = data.get('bids')[0][0]
+        self.cur_state['minAsk'] = data.get('asks')[0][0]
 
     def message_kline(self, data):
         a = data
@@ -210,7 +217,8 @@ class MainWindow(QMainWindow, UiMainWindow):
                 req_margin = self.cur_state['contractValue'] * self.cur_state['numconts'] / self.cur_state['leverage']
                 if req_margin < available:
                     if self.chb_buy.checkState() == Qt.Checked:
-                        pricetoBuy = self.current_cell_price - self.cur_state['orderDist'] * self.current_dist
+                        # pricetoBuy = self.current_cell_price - self.cur_state['orderDist'] * self.current_dist
+                        pricetoBuy = min(self.current_cell_price, self.cur_state['minAsk'] - self.cur_state['orderDist'] * self.current_dist)
                         self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
                                                   timeInForce='GTC', side='BUY', px=pricetoBuy,
                                                   qty=self.cur_state['numconts'])
@@ -220,7 +228,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                                                   timeInForce='GTC', side='SELL', px=pricetoSell,
                                                   qty=self.cur_state['numconts'])
             # завершаем ордеры, которые находятся не на расстоянии дистанции или количество не равно количеству открываемых контрактов
-            priceDistBuy = self.current_cell_price - self.cur_state['orderDist'] * self.current_dist
+            priceDistBuy = min(self.current_cell_price, self.cur_state['minAsk'] - self.cur_state['orderDist'] * self.current_dist)
             priceDistSell = self.current_cell_price + self.cur_state['orderDist'] * self.current_dist
             for order in self.listOrders:
                 if (order.px != priceDistBuy and order.orderSide == 'BUY') or (

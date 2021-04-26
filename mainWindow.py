@@ -1,19 +1,36 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QSplitter, QLineEdit, QCheckBox, QSizePolicy
-from PyQt5.QtGui import QIcon, QPainter
+from PyQt5.QtGui import QIcon, QPainter, QPen, QColor
+import time
 
 class DisplayField(QWidget):
     def __init__(self):
         QWidget.__init__(self)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setContentsMargins(0, 0, 0, 0)
+        self.checktime = time.time()
+        self.alpha = 255
+        self.alphadirect = -1
+        self.alphavel = 60
 
     def paintEvent(self, event):
         painter = QPainter(self)
         width = painter.viewport().width()  # текущая ширина окна рисования
         height = painter.viewport().height()  # текущая высота окна рисования
         painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
+
+        self.alpha += (round((time.time() - self.checktime) * self.alphavel)) * self.alphadirect
+        self.checktime = time.time()
+        if self.alpha <= 0:
+            self.alpha = 0
+            self.alphadirect = -self.alphadirect
+        if self.alpha >= 255:
+            self.alpha = 255
+            self.alphadirect = -self.alphadirect
+
+        painter.setPen(QPen(QColor(255, 128, 0, self.alpha), 5))
+        painter.drawLine(0, height // 2, width, height // 2)
 
 class UiMainWindow(object):
     def __init__(self):
