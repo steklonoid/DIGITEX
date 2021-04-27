@@ -32,12 +32,14 @@ class WSThread(Thread):
                 if self.message.get('id'):
                     id = self.message.get('id')
                     status = self.message.get('status')
+                    if id == 10:
+                        print(id, status)
                     self.pc.message_response(id, status)
                 if self.message.get('ch'):
                     channel = self.message.get('ch')
                     data = self.message.get('data')
                     self.lock.acquire()
-                    self.pc.channels[channel].append(data)
+                    self.pc.channels[channel]['mes'].append(data)
                     self.lock.release()
 
 
@@ -48,6 +50,7 @@ class WSThread(Thread):
         if lastname != '':
             self.send_public('unsubscribe', lastname + '@index', lastname + '@trades', lastname + '@ticker', lastname + '@orderbook_1')
         self.send_public('subscribe', name + '@index', name + '@trades', name + '@ticker', name + '@orderbook_1')
+        self.send_privat('getTraderStatus', symbol=name)
 
     def send_public(self, method, *params):
         pd = {'id':self.methods.get(method), 'method':method}
@@ -60,6 +63,7 @@ class WSThread(Thread):
     def send_privat(self, method, **params):
         pd = {'id':self.methods.get(method), 'method':method, 'params':params}
         strpar = json.dumps(pd)
+        print(strpar)
         self.wsapp.send(strpar)
         time.sleep(0.1)
 
@@ -71,16 +75,19 @@ class SuperViser(Thread):
         self.lock = Lock()
 
     def run(self) -> None:
-        oldtime = time.time()
         while True:
-            for channel in self.pc.channels.keys():
+            time.sleep(self.timer)
+            chkeys = self.pc.channels.keys()
+            for channel in chkeys:
                 self.lock.acquire()
-                listmes = self.pc.channels[channel]
+                listmes = list(self.pc.channels[channel]['mes'])
+                self.pc.channels[channel]['mes'].clear()
+                public = self.pc.channels[channel]['public']
                 self.lock.release()
                 if listmes:
-                    data = listmes[-1]
-                    eval('self.pc.message_' + channel + '(data)')
-                    print(len(listmes))
-                    self.lock.acquire()
-                    listmes.clear()
-                    self.lock.release()
+                    if public:
+                        data = listmes[-1]
+                        eval('self.pc.message_' + channel + '(data)')
+                    else:
+                        for mes in listmes:
+                            eval('self.pc.message_' + channel + '(mes)')

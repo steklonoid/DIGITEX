@@ -14,6 +14,9 @@ import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
 
+ACTIVE = 0
+INCLOSE = 1
+CLOSED = 2
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
 
 class Order():
@@ -22,10 +25,17 @@ class Order():
         self.orderSide = kwargs['orderSide']
         self.px = kwargs['px']
         self.qty = kwargs['qty']
+        self.status = kwargs['status']
 
 class Contract():
     def __init__(self, **kwargs):
         self.contractId = kwargs['contractId']
+        self.status = kwargs['status']
+
+class ChannelData():
+    def __init__(self, messages=[], public=True):
+        self.messages = messages
+        self.public = public
 
 class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
@@ -53,15 +63,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         'pnl':0,
         'upnl':0
                     }
-    channels = {'orderbook_1': [], 'kline': [], 'trades': [], 'liquidations': [], 'ticker': [], 'fundingInfo': [],
-                'index': [], 'tradingStatus': [], 'orderStatus': [], 'orderFilled': [], 'orderCancelled': [],
-                'condOrderStatus': [], 'contractClosed': [], 'traderStatus': [], 'leverage': [], 'funding': [],
-                'position': []}
+    channels = {'orderbook_1': {'mes':[], 'public':True}, 'kline': {'mes':[], 'public':True}, 'trades': {'mes':[], 'public':True}, 'liquidations': {'mes':[], 'public':True}, 'ticker': {'mes':[], 'public':True}, 'fundingInfo': {'mes':[], 'public':True},
+                'index': {'mes':[], 'public':True}, 'tradingStatus': {'mes':[], 'public':False}, 'orderStatus': {'mes':[], 'public':False}, 'orderFilled': {'mes':[], 'public':False}, 'orderCancelled': {'mes':[], 'public':False},
+                'condOrderStatus': {'mes':[], 'public':False}, 'contractClosed': {'mes':[], 'public':False}, 'traderStatus': {'mes':[], 'public':False}, 'leverage': {'mes':[], 'public':False}, 'funding': {'mes':[], 'public':False},
+                'position': {'mes':[], 'public':False}}
     current_cell_price = 0      #   текущая тик-цена
     last_cell_price = 0         #   прошлая тик-цена
-    current_dist = 0
 
-    message_queue = []
     listOrders = []
     listContracts = []
 
@@ -99,10 +107,14 @@ class MainWindow(QMainWindow, UiMainWindow):
         # создание визуальной формы
         self.setupui(self)
         self.show()
-        time.sleep(1)
+
+        # создание потока, в котором происходит подключение к вебсокету, обработка приходящих сообщений и запись их
+        # в переменную channels
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
+
+        # создание потока, который читает данные из переменной channels и обрабатывает их
         self.sv = SuperViser(self)
         self.sv.daemon = True
         self.sv.start()
@@ -163,9 +175,10 @@ class MainWindow(QMainWindow, UiMainWindow):
     @pyqtSlot()
     def buttonex_clicked(self, name):
         if name != self.cur_state['symbol']:
-            self.dxthread.changeEx(name, self.cur_state['symbol'])
+            lastname = self.cur_state['symbol']
             self.cur_state['symbol'] = name
-            self.current_dist = ex[name]['TICK_SIZE']
+            self.dxthread.changeEx(name, lastname)
+
 
     @pyqtSlot()
     def startbutton_clicked(self):
@@ -212,34 +225,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         a = data
 
     def message_index(self, data):
-
-        def current_cell_price_changed():
-            # открываем ордеры
-            if self.cur_state['tradingFlag']:
-                available = self.cur_state['traderBalance'] - self.cur_state['orderMargin'] - self.cur_state['positionMargin']
-                req_margin = self.cur_state['contractValue'] * self.cur_state['numconts'] / self.cur_state['leverage']
-                if req_margin < available:
-                    if self.chb_buy.checkState() == Qt.Checked:
-                        # pricetoBuy = self.current_cell_price - self.cur_state['orderDist'] * self.current_dist
-                        pricetoBuy = min(self.current_cell_price, self.cur_state['minAsk'] - self.cur_state['orderDist'] * self.current_dist)
-                        self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
-                                                  timeInForce='GTC', side='BUY', px=pricetoBuy,
-                                                  qty=self.cur_state['numconts'])
-                    if self.chb_sell.checkState() == Qt.Checked:
-                        pricetoSell = self.current_cell_price + self.cur_state['orderDist'] * self.current_dist
-                        self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
-                                                  timeInForce='GTC', side='SELL', px=pricetoSell,
-                                                  qty=self.cur_state['numconts'])
-            # завершаем ордеры, которые находятся не на расстоянии дистанции или количество не равно количеству открываемых контрактов
-            priceDistBuy = min(self.current_cell_price, self.cur_state['minAsk'] - self.cur_state['orderDist'] * self.current_dist)
-            priceDistSell = self.current_cell_price + self.cur_state['orderDist'] * self.current_dist
-            for order in self.listOrders:
-                if (order.px != priceDistBuy and order.orderSide == 'BUY') or (
-                        order.px != priceDistSell and order.orderSide == 'SELL') or (
-                        order.qty != self.current_numconts):
-                    self.dxthread.send_privat('cancelOrder', symbol=self.cur_state['symbol'],
-                                              clOrdId=order.clOrdId)
-
         self.cur_state['spotPx'] = data['spotPx']
         self.l_spot.setText(str(data['spotPx']))
         self.cur_state['markPx'] = data['markPx']
@@ -247,10 +232,48 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.cur_state['fairPx'] = data['fairPx']
         self.l_fair.setText(str(data['fairPx']))
 
-        self.current_cell_price = math.floor(self.cur_state['spotPx'] / self.current_dist) * self.current_dist
-        if self.current_cell_price != self.last_cell_price:
-            self.last_cell_price = self.current_cell_price
-            current_cell_price_changed()
+        current_dist = ex[self.cur_state['symbol']]['TICK_SIZE']
+        self.current_cell_price = math.floor(self.cur_state['spotPx'] / current_dist) * current_dist
+
+        # открываем ордеры
+        if self.cur_state['tradingFlag']:
+            available = self.cur_state['traderBalance'] - self.cur_state['orderMargin'] - self.cur_state[
+                'positionMargin']
+            req_margin = self.cur_state['contractValue'] * self.cur_state['numconts'] / self.cur_state['leverage']
+            if req_margin < available:
+                if self.chb_buy.checkState() == Qt.Checked:
+                    if not [x for x in self.listOrders if x.orderSide == 'BUY']:
+                        pricetoBuy = min(self.current_cell_price,
+                                         self.cur_state['minAsk'] - self.cur_state['orderDist'] * current_dist)
+                        self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
+                                                  timeInForce='GTC', side='BUY', px=pricetoBuy,
+                                                  qty=self.cur_state['numconts'])
+                if self.chb_sell.checkState() == Qt.Checked:
+                    if not [x for x in self.listOrders if x.orderSide == 'SELL']:
+                        pricetoSell = self.current_cell_price + self.cur_state['orderDist'] * current_dist
+                        self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
+                                                  timeInForce='GTC', side='SELL', px=pricetoSell,
+                                                  qty=self.cur_state['numconts'])
+        # завершаем ордеры, которые находятся не на расстоянии дистанции или количество не равно количеству открываемых контрактов
+        priceDistBuy = min(self.current_cell_price,
+                           self.cur_state['minAsk'] - self.cur_state['orderDist'] * current_dist)
+        priceDistSell = max(self.current_cell_price,
+                           self.cur_state['maxBid'] + self.cur_state['orderDist'] * current_dist)
+        for order in self.listOrders:
+            if order.status == ACTIVE:
+                if (order.px != priceDistBuy and order.orderSide == 'BUY') or (
+                        order.px != priceDistSell and order.orderSide == 'SELL') or (
+                        order.qty != self.cur_state['numconts']):
+                    self.dxthread.send_privat('cancelOrder', symbol=self.cur_state['symbol'],
+                                              clOrdId=order.clOrdId)
+                    order.status = INCLOSE
+
+        # завершаем открытые контракты
+        for cont in self.listContracts:
+            if cont.status == ACTIVE:
+                self.dxthread.send_privat('closeContract', symbol=self.cur_state['symbol'],
+                                          contractId=cont.contractId, ordType='MARKET')
+                cont.status = INCLOSE
 
     # ==== приватные сообщения
     def update_cur_state(self, data):
@@ -274,7 +297,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_upnl.setText(str(data['upnl']))
 
     def message_tradingStatus(self, data):
-        print(data)
         status = data.get('available')
         self.buttonLeverage.setEnabled(status)
         self.startbutton.setEnabled(status)
@@ -291,19 +313,24 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_orderStatus(self, data):
         self.update_cur_state(data)
         if data['orderStatus'] == 'ACCEPTED':
-            self.listOrders.append(Order(clOrdId=data['clOrdId'], orderSide=data['orderSide'], px=data['px'], qty=data['qty']))
+            self.listOrders.append(Order(clOrdId=data['clOrdId'], orderSide=data['orderSide'], px=data['px'], qty=data['qty'], status=ACTIVE))
 
     def message_orderFilled(self, data):
         self.update_cur_state(data)
-        print(data)
-        for contract in data['contracts']:
-            if contract['qty'] != 0:
-                self.dxthread.send_privat('closeContract', symbol=self.cur_state['symbol'], contractId=contract['contractId'], ordType='MARKET')
+        listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
+        listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
+        for cont in listnewcontids:
+            self.listContracts.append(Contract(contractId=cont['contractId'], status=ACTIVE))
+        lc = [x for x in self.listContracts if x.status == INCLOSE]
+        for cont in lc:
+            if cont.contractId in listcontidtoclose:
+                self.listContracts.remove(cont)
 
     def message_orderCancelled(self, data):
         self.cur_state['orderMargin'] = data['orderMargin']
         listtoremove = [x['origClOrdId'] for x in data['orders']]
-        for order in self.listOrders:
+        lo = [x for x in self.listOrders if x.status ==  INCLOSE]
+        for order in lo:
             if order.clOrdId in listtoremove:
                 self.listOrders.remove(order)
 
