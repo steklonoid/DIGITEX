@@ -22,9 +22,13 @@ ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE'
 class Order():
     def __init__(self, **kwargs):
         self.clOrdId = kwargs['clOrdId']
+        self.origClOrdId = kwargs['origClOrdId']
         self.orderSide = kwargs['orderSide']
+        self.orderType = kwargs['orderType']
         self.px = kwargs['px']
         self.qty = kwargs['qty']
+        self.leverage = kwargs['leverage']
+        self.paidPx = kwargs['paidPx']
         self.status = kwargs['status']
 
 class Contract():
@@ -199,6 +203,26 @@ class MainWindow(QMainWindow, UiMainWindow):
         rw.setupUi(self.cur_state['leverage'])
         rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.cur_state['symbol'], leverage=int(rw.lineedit_leverage.text())))
         rw.exec_()
+
+    def update_cur_state(self, data):
+        self.cur_state['traderBalance'] = data['traderBalance']
+        self.l_balance_dgtx.setText(str(data['traderBalance']))
+        self.l_balance_usd.setText(str(round(data['traderBalance'] * self.cur_state['dgtxUsdRate'], 2)))
+
+        self.cur_state['leverage'] = data['leverage']
+        self.buttonLeverage.setText(str(data['leverage']) + ' x')
+
+        self.cur_state['orderMargin'] = data['orderMargin']
+        self.l_margin_order.setText(str(data['orderMargin']))
+        self.cur_state['positionMargin'] = data['positionMargin']
+        self.l_margin_contr.setText(str(data['positionMargin']))
+        available = round(data['traderBalance'] - data['orderMargin'] - data['positionMargin'], 4)
+        self.l_available_dgtx.setText(str(available))
+        self.l_available_usd.setText(str(round(available * self.cur_state['dgtxUsdRate'], 2)))
+        self.cur_state['pnl'] = data['pnl']
+        self.l_pnl.setText(str(data['pnl']))
+        self.cur_state['upnl'] = data['upnl']
+        self.l_upnl.setText(str(data['upnl']))
     # ========== обработчик респонсов ============
     def message_response(self, id, status):
         a = id
@@ -245,8 +269,12 @@ class MainWindow(QMainWindow, UiMainWindow):
                     if not [x for x in self.listOrders if x.orderSide == 'BUY']:
                         pricetoBuy = min(self.current_cell_price,
                                          self.cur_state['minAsk'] - self.cur_state['orderDist'] * current_dist)
-                        self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
-                                                  timeInForce='GTC', side='BUY', px=pricetoBuy,
+                        self.dxthread.send_privat('placeOrder',
+                                                  symbol=self.cur_state['symbol'],
+                                                  ordType='LIMIT',
+                                                  timeInForce='GTC',
+                                                  side='BUY',
+                                                  px=pricetoBuy,
                                                   qty=self.cur_state['numconts'])
                 if self.chb_sell.checkState() == Qt.Checked:
                     if not [x for x in self.listOrders if x.orderSide == 'SELL']:
@@ -254,6 +282,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                         self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
                                                   timeInForce='GTC', side='SELL', px=pricetoSell,
                                                   qty=self.cur_state['numconts'])
+
         # завершаем ордеры, которые находятся не на расстоянии дистанции или количество не равно количеству открываемых контрактов
         priceDistBuy = min(self.current_cell_price,
                            self.cur_state['minAsk'] - self.cur_state['orderDist'] * current_dist)
@@ -276,26 +305,6 @@ class MainWindow(QMainWindow, UiMainWindow):
                 cont.status = INCLOSE
 
     # ==== приватные сообщения
-    def update_cur_state(self, data):
-        self.cur_state['traderBalance'] = data['traderBalance']
-        self.l_balance_dgtx.setText(str(data['traderBalance']))
-        self.l_balance_usd.setText(str(round(data['traderBalance'] * self.cur_state['dgtxUsdRate'], 2)))
-
-        self.cur_state['leverage'] = data['leverage']
-        self.buttonLeverage.setText(str(data['leverage']) + ' x')
-
-        self.cur_state['orderMargin'] = data['orderMargin']
-        self.l_margin_order.setText(str(data['orderMargin']))
-        self.cur_state['positionMargin'] = data['positionMargin']
-        self.l_margin_contr.setText(str(data['positionMargin']))
-        available = round(data['traderBalance'] - data['orderMargin'] - data['positionMargin'], 4)
-        self.l_available_dgtx.setText(str(available))
-        self.l_available_usd.setText(str(round(available * self.cur_state['dgtxUsdRate'], 2)))
-        self.cur_state['pnl'] = data['pnl']
-        self.l_pnl.setText(str(data['pnl']))
-        self.cur_state['upnl'] = data['upnl']
-        self.l_upnl.setText(str(data['upnl']))
-
     def message_tradingStatus(self, data):
         status = data.get('available')
         self.buttonLeverage.setEnabled(status)
@@ -312,11 +321,31 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderStatus(self, data):
         self.update_cur_state(data)
+        # если приходит сообщение о подтвержденном ордере
         if data['orderStatus'] == 'ACCEPTED':
-            self.listOrders.append(Order(clOrdId=data['clOrdId'], orderSide=data['orderSide'], px=data['px'], qty=data['qty'], status=ACTIVE))
+            # список оригинальных ид существующих ордеров
+            listids = [x.origClOrdId for x in self.listOrders]
+            if data['origClOrdId'] not in listids:
+                self.listOrders.append(Order(clOrdId=data['clOrdId'],
+                                             origClOrdId=data['origClOrdId'],
+                                             orderSide=data['orderSide'],
+                                             orderType=data['orderType'],
+                                             px=data['px'],
+                                             qty=data['qty'],
+                                             leverage=data['leverage'],
+                                             paidPx = data['paidPx'],
+                                             status=ACTIVE))
 
     def message_orderFilled(self, data):
         self.update_cur_state(data)
+        # отменяем ордер
+        if data['orderStatus'] == 'FILLED':
+            orderidtoremove = data['origClOrdId']
+            lo = list(self.listOrders)
+            for order in lo:
+                if order.origClOrdId == orderidtoremove:
+                    self.listOrders.remove(order)
+
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
         for cont in listnewcontids:
@@ -328,11 +357,13 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderCancelled(self, data):
         self.cur_state['orderMargin'] = data['orderMargin']
-        listtoremove = [x['origClOrdId'] for x in data['orders']]
-        lo = [x for x in self.listOrders if x.status ==  INCLOSE]
-        for order in lo:
-            if order.clOrdId in listtoremove:
-                self.listOrders.remove(order)
+        # если статус отмена
+        if data['orderStatus'] == 'CANCELLED':
+            listtoremove = [x['origClOrdId'] for x in data['orders']]
+            lo = list(self.listOrders)
+            for order in lo:
+                if order.origClOrdId in listtoremove:
+                    self.listOrders.remove(order)
 
     def message_condOrderStatus(self, data):
         a = data
