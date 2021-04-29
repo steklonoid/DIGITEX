@@ -27,6 +27,20 @@ QPushButton#buttonEnter {
     border: none;
     }
 
-QTableView::item:hover {
-    background-color: rgb(0, 0, 0);
+QTableView#tw_buy::item {
+    background-color: rgb(0, 24, 0);
+    color: rgb(0, 212, 0);
+}
+
+QTableView#tw_buy::item:hover {
+    background-color: rgb(0, 72, 0);
+}
+
+QTableView#tw_sell::item {
+    background-color: rgb(24, 0, 0);
+    color: rgb(255, 96, 96);
+}
+
+QTableView#tw_sell::item:hover {
+    background-color: rgb(72, 0, 0);
 }

@@ -9,7 +9,7 @@ from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
-from wss import WSThread, SuperViser
+from wss import WSThread, Worker, SuperViser
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
@@ -34,6 +34,7 @@ class Order():
 class Contract():
     def __init__(self, **kwargs):
         self.contractId = kwargs['contractId']
+        self.origContractId = kwargs['origContractId']
         self.status = kwargs['status']
 
 class ChannelData():
@@ -52,7 +53,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         'numconts': 1,
         'orderDist': 5,
         'tradingFlag': False,
-        'authFlag': False,
+        'connectFlag': False,
         'leverage': 0,
         'traderBalance': 0,
         'orderMargin': 0,
@@ -116,10 +117,11 @@ class MainWindow(QMainWindow, UiMainWindow):
         # в переменную channels
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
-        self.dxthread.start()
-
         # создание потока, который читает данные из переменной channels и обрабатывает их
-        self.sv = SuperViser(self)
+        self.worker = Worker(self)
+        self.worker.daemon = True
+        # создание супервайзера
+        self.sv = SuperViser([self.dxthread, self.worker])
         self.sv.daemon = True
         self.sv.start()
 
@@ -278,7 +280,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                                                   qty=self.cur_state['numconts'])
                 if self.chb_sell.checkState() == Qt.Checked:
                     if not [x for x in self.listOrders if x.orderSide == 'SELL']:
-                        pricetoSell = self.current_cell_price + self.cur_state['orderDist'] * current_dist
+                        pricetoSell = max(self.current_cell_price, self.cur_state['maxBid'] + self.cur_state['orderDist'] * current_dist)
                         self.dxthread.send_privat('placeOrder', symbol=self.cur_state['symbol'], ordType='LIMIT',
                                                   timeInForce='GTC', side='SELL', px=pricetoSell,
                                                   qty=self.cur_state['numconts'])
@@ -303,6 +305,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.dxthread.send_privat('closeContract', symbol=self.cur_state['symbol'],
                                           contractId=cont.contractId, ordType='MARKET')
                 cont.status = INCLOSE
+
 
     # ==== приватные сообщения
     def message_tradingStatus(self, data):
@@ -345,14 +348,16 @@ class MainWindow(QMainWindow, UiMainWindow):
             for order in lo:
                 if order.origClOrdId == orderidtoremove:
                     self.listOrders.remove(order)
-
+        # создаем контракты
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
         for cont in listnewcontids:
-            self.listContracts.append(Contract(contractId=cont['contractId'], status=ACTIVE))
-        lc = [x for x in self.listContracts if x.status == INCLOSE]
+            self.listContracts.append(Contract(contractId=cont['contractId'],
+                                               origContractId=cont['origContractId'],
+                                               status=ACTIVE))
+        lc = list(self.listContracts)
         for cont in lc:
-            if cont.contractId in listcontidtoclose:
+            if cont.origContractId in listcontidtoclose:
                 self.listContracts.remove(cont)
 
     def message_orderCancelled(self, data):

@@ -4,10 +4,7 @@ import json
 import time
 
 class WSThread(Thread):
-
     methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6, 'cancelAllOrders':7, 'placeCondOrder':8, 'cancelCondOrder':9, 'closeContract':10, 'closePosition':11, 'getTraderStatus':12, 'changeLeverageAll':13}
-
-
     def __init__(self, pc):
         super(WSThread, self).__init__()
         self.message = dict()
@@ -16,13 +13,16 @@ class WSThread(Thread):
 
     def run(self) -> None:
         def on_open(wsapp):
+            self.pc.cur_state['connectFlag'] = True
             self.pc.buttonBTC.clicked.emit()
 
         def on_close(wsapp):
-            print('on_close')
+            self.pc.cur_state['connectFlag'] = False
+            self.done()
 
         def on_error(wsapp, error):
-            print('error ' + error)
+            self.pc.cur_state['connectFlag'] = False
+            self.done()
 
         def on_message(wssapp, message):
             if message == 'ping':
@@ -32,9 +32,6 @@ class WSThread(Thread):
                 if self.message.get('id'):
                     id = self.message.get('id')
                     status = self.message.get('status')
-                    if id == 10:
-                        print(id, status)
-                    self.pc.message_response(id, status)
                 if self.message.get('ch'):
                     channel = self.message.get('ch')
                     data = self.message.get('data')
@@ -63,15 +60,14 @@ class WSThread(Thread):
     def send_privat(self, method, **params):
         pd = {'id':self.methods.get(method), 'method':method, 'params':params}
         strpar = json.dumps(pd)
-        print(strpar)
         self.wsapp.send(strpar)
         time.sleep(0.1)
 
-class SuperViser(Thread):
+class Worker(Thread):
     def __init__(self, pc):
-        super(SuperViser, self).__init__()
+        super(Worker, self).__init__()
         self.pc = pc
-        self.timer = 0.2
+        self.timer = 0.15
         self.lock = Lock()
 
     def run(self) -> None:
@@ -91,3 +87,16 @@ class SuperViser(Thread):
                     else:
                         for mes in listmes:
                             eval('self.pc.message_' + channel + '(mes)')
+
+class SuperViser(Thread):
+    def __init__(self, lth):
+        super(SuperViser, self).__init__()
+        self.lth = lth
+        self.timer = 1
+
+    def run(self) -> None:
+        while True:
+            for th in self.lth:
+                if not th.isAlive():
+                    th.start()
+            time.sleep(self.timer)
