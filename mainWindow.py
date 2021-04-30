@@ -1,7 +1,7 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QOpenGLWidget, QSizePolicy, QGroupBox, QTableView, QAbstractItemView, QHeaderView
-from PyQt5.QtGui import QIcon, QPainter, QPen, QColor, QStandardItemModel, QStandardItem
+from PyQt5.QtGui import QIcon, QPainter, QStandardItemModel, QStandardItem
 from OpenGL import GL
 import time
 
