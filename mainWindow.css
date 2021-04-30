@@ -1,5 +1,5 @@
-QWidget#hspacerwidgetinfo {
-    background-color: rgb(20, 21, 25);
+QWidget#centralwidget {
+    background-color: rgb(232, 255, 255);
 }
 QPushButton#BTCUSD-PERP {
     background-color: rgb(26, 28, 54);
@@ -44,3 +44,23 @@ QTableView#tw_sell::item {
 QTableView#tw_sell::item:hover {
     background-color: rgb(72, 0, 0);
 }
+
+QPushButton#pb_buy {
+    background-color: rgb(26, 28, 54);
+    color:rgb(212, 255, 212);
+    font: bold 14px;
+    }
+
+QPushButton#pb_buy:hover {
+	background-color: rgb(39, 42, 81);
+	}
+
+QPushButton#pb_sell {
+    background-color: rgb(26, 28, 54);
+    color:rgb(255, 212, 212);
+    font: bold 14px;
+    }
+
+QPushButton#pb_sell:hover {
+	background-color: rgb(39, 42, 81);
+	}

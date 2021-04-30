@@ -1,10 +1,11 @@
 # модуль главного окна
 from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QLineEdit, QCheckBox, QSizePolicy, QGroupBox, QTableView, QAbstractItemView
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QOpenGLWidget, QSizePolicy, QGroupBox, QTableView, QAbstractItemView, QHeaderView
 from PyQt5.QtGui import QIcon, QPainter, QPen, QColor, QStandardItemModel, QStandardItem
+from OpenGL import GL
 import time
 
-class DisplayField(QWidget):
+class DisplayField(QOpenGLWidget):
     def __init__(self):
         QWidget.__init__(self)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -14,27 +15,22 @@ class DisplayField(QWidget):
         self.alphadirect = -1
         self.alphavel = 60
 
-    def paintEvent(self, event):
+    def initializeGL(self) -> None:
+        GL.glClearColor(0, 0, 0, 1)
+
+    def resizeGL(self, w: int, h: int) -> None:
+        GL.glLoadIdentity()
+
+    def paintGL(self) -> None:
         painter = QPainter(self)
-        width = painter.viewport().width()  # текущая ширина окна рисования
-        height = painter.viewport().height()  # текущая высота окна рисования
-        painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
-
-        self.alpha += (round((time.time() - self.checktime) * self.alphavel)) * self.alphadirect
-        self.checktime = time.time()
-        if self.alpha <= 0:
-            self.alpha = 0
-            self.alphadirect = -self.alphadirect
-        if self.alpha >= 255:
-            self.alpha = 255
-            self.alphadirect = -self.alphadirect
-
-        painter.setPen(QPen(QColor(255, 128, 0, self.alpha), 5))
-        painter.drawLine(0, height // 2, width, height // 2)
+        # width = painter.viewport().width()  # текущая ширина окна рисования
+        # height = painter.viewport().height()  # текущая высота окна рисования
+        # painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
 
 class UiMainWindow(object):
     def __init__(self):
         self.buttonlist = []
+        self.numcontbuttonlist = []
 
     def setupui(self, mainwindow):
 
@@ -47,31 +43,15 @@ class UiMainWindow(object):
                     b.setIcon(QIcon("./images/buttonofflineicon.png"))
 
         @pyqtSlot()
-        def le_numcont_editingFinished():
-            v = self.sender().text()
-            if not v.isdigit():
-                self.sender().setText('1')
-                self.cur_state['symbol'] = 1
-            elif int(v) < 1:
-                self.sender().setText('1')
-                self.cur_state['numconts'] = 1
-            elif int(v) > 100:
-                self.sender().setText('100')
-                self.cur_state['numconts'] = 100
-            else:
-                self.cur_state['numconts'] = int(v)
-
-        @pyqtSlot()
-        def le_orderdist_editingFinished():
-            v = self.sender().text()
-            if not v.isdigit():
-                self.sender().setText('10')
-                self.cur_state['orderDist'] = 10
-            elif int(v) < 1:
-                self.sender().setText('1')
-                self.cur_state['orderDist'] = 1
-            else:
-                self.cur_state['orderDist'] = int(v)
+        def numcont_choose():
+            b = self.sender().objectName()
+            value = int(b.replace('pb_numcont_', ''))
+            self.cur_state['numconts'] = value
+            for b in self.numcontbuttonlist:
+                if b == self.sender():
+                    b.setIcon(QIcon("./images/buttononlineicon.png"))
+                else:
+                    b.setIcon(QIcon("./images/buttonofflineicon.png"))
 
         @pyqtSlot()
         def tw_buy_clicked():
@@ -101,7 +81,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Trading v1.1.0")
+        mainwindow.setWindowTitle("Digitex Trading v1.2.1")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -289,7 +269,7 @@ class UiMainWindow(object):
         self.tm_buy = QStandardItemModel()
         self.tm_buy.setColumnCount(2)
         self.tm_buy.setHorizontalHeaderLabels(['Тики', 'К-во'])
-        for i in range(5):
+        for i in range(10):
             it1 = QStandardItem()
             it1.setData(i + 1, Qt.DisplayRole)
             it1.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
@@ -300,6 +280,7 @@ class UiMainWindow(object):
         self.tw_buy = QTableView()
         self.tw_buy.setObjectName('tw_buy')
         self.tw_buy.setModel(self.tm_buy)
+        self.tw_buy.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tw_buy.verticalHeader().close()
         self.tw_buy.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tw_buy.clicked.connect(tw_buy_clicked)
@@ -307,7 +288,7 @@ class UiMainWindow(object):
         self.tm_sell = QStandardItemModel()
         self.tm_sell.setColumnCount(2)
         self.tm_sell.setHorizontalHeaderLabels(['Тики', 'К-во'])
-        for i in range(5):
+        for i in range(10):
             it1 = QStandardItem()
             it1.setData(i + 1, Qt.DisplayRole)
             it1.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
@@ -318,15 +299,20 @@ class UiMainWindow(object):
         self.tw_sell = QTableView()
         self.tw_sell.setObjectName('tw_sell')
         self.tw_sell.setModel(self.tm_sell)
+        self.tw_sell.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tw_sell.verticalHeader().close()
         self.tw_sell.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tw_sell.clicked.connect(tw_sell_clicked)
         self.gl_manual.addWidget(self.tw_sell, 0, 1, 1, 1)
         self.pb_buy = QPushButton()
+        self.pb_buy.setObjectName('pb_buy')
         self.pb_buy.setText('BUY')
+        self.pb_buy.clicked.connect(self.pb_buy_clicked)
         self.gl_manual.addWidget(self.pb_buy, 1, 0, 1, 1)
         self.pb_sell = QPushButton()
+        self.pb_sell.setObjectName('pb_sell')
         self.pb_sell.setText('SELL')
+        self.pb_sell.clicked.connect(self.pb_sell_clicked)
         self.gl_manual.addWidget(self.pb_sell, 1, 1, 1, 1)
         self.bottom_hspacer.addWidget(self.gb_manual)
 
@@ -335,35 +321,45 @@ class UiMainWindow(object):
         self.gl_auto = QGridLayout()
         self.gb_auto.setLayout(self.gl_auto)
         self.gl_auto.addWidget(QLabel('К-во контр.'), 0, 0, 1, 1)
-        self.le_numcont = QLineEdit()
-        self.le_numcont.setText(str(mainwindow.cur_state['numconts']))
-        self.le_numcont.editingFinished.connect(le_numcont_editingFinished)
-        self.gl_auto.addWidget(self.le_numcont, 0, 1, 1, 1)
-        self.gl_auto.addWidget(QLabel('Дистанция ордера'), 1, 0, 1, 1)
-        self.le_orderdist = QLineEdit()
-        self.le_orderdist.setText(str(mainwindow.cur_state['orderDist']))
-        self.le_orderdist.editingFinished.connect(le_orderdist_editingFinished)
-        self.gl_auto.addWidget(self.le_orderdist, 1, 1, 1, 1)
-        #    флажки покупки продажи
-        self.chb_sell = QCheckBox()
-        self.chb_sell.setText('SELL')
-        self.chb_sell.setCheckState(Qt.Checked)
-        self.gl_auto.addWidget(self.chb_sell, 2, 0, 1, 1)
-        self.chb_buy = QCheckBox()
-        self.chb_buy.setText('BUY')
-        self.chb_buy.setCheckState(Qt.Checked)
-        self.gl_auto.addWidget(self.chb_buy, 2, 1, 1, 1)
+        self.numcont_spacer_widget = QWidget()
+        self.numcont_spacer = QHBoxLayout(self.numcont_spacer_widget)
+        self.pb_numcont_1 = QPushButton()
+        self.pb_numcont_1.setText('1')
+        self.pb_numcont_1.setObjectName('pb_numcont_1')
+        self.pb_numcont_1.clicked.connect(numcont_choose)
+        self.numcontbuttonlist.append(self.pb_numcont_1)
+        self.numcont_spacer.addWidget(self.pb_numcont_1)
+        self.pb_numcont_2 = QPushButton()
+        self.pb_numcont_2.setText('2')
+        self.pb_numcont_2.setObjectName('pb_numcont_2')
+        self.pb_numcont_2.clicked.connect(numcont_choose)
+        self.numcontbuttonlist.append(self.pb_numcont_2)
+        self.numcont_spacer.addWidget(self.pb_numcont_2)
+        self.pb_numcont_5 = QPushButton()
+        self.pb_numcont_5.setText('5')
+        self.pb_numcont_5.setObjectName('pb_numcont_5')
+        self.pb_numcont_5.clicked.connect(numcont_choose)
+        self.numcontbuttonlist.append(self.pb_numcont_5)
+        self.numcont_spacer.addWidget(self.pb_numcont_5)
+        self.pb_numcont_10 = QPushButton()
+        self.pb_numcont_10.setText('10')
+        self.pb_numcont_10.setObjectName('pb_numcont_10')
+        self.pb_numcont_10.clicked.connect(numcont_choose)
+        self.numcontbuttonlist.append(self.pb_numcont_10)
+        self.numcont_spacer.addWidget(self.pb_numcont_10)
+        self.pb_numcont_50 = QPushButton()
+        self.pb_numcont_50.setText('50')
+        self.pb_numcont_50.setObjectName('pb_numcont_50')
+        self.pb_numcont_50.clicked.connect(numcont_choose)
+        self.numcontbuttonlist.append(self.pb_numcont_50)
+        self.numcont_spacer.addWidget(self.pb_numcont_50)
+        self.gl_auto.addWidget(self.numcont_spacer_widget, 0, 1, 1, 1)
         # кнопка старт
         self.startbutton = QPushButton()
         self.startbutton.setText('СТАРТ')
         self.startbutton.setEnabled(False)
         self.startbutton.clicked.connect(self.startbutton_clicked)
-        self.gl_auto.addWidget(self.startbutton, 3, 0, 1, 1)
-        # кнопка закрыть все ордера
-        self.button_closeall = QPushButton()
-        self.button_closeall.setText('закрыть все ордера')
-        self.button_closeall.clicked.connect(self.button_closeall_clicked)
-        self.gl_auto.addWidget(self.button_closeall, 3, 1, 1, 1)
+        self.gl_auto.addWidget(self.startbutton, 3, 0, 1, 2)
         self.bottom_hspacer.addWidget(self.gb_auto)
 
         self.splitterv.addWidget(self.bottom_hspacer_widget)

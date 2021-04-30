@@ -15,6 +15,7 @@ class WSThread(Thread):
         def on_open(wsapp):
             self.pc.cur_state['connectFlag'] = True
             self.pc.buttonBTC.clicked.emit()
+            self.pc.pb_numcont_1.clicked.emit()
 
         def on_close(wsapp):
             self.pc.cur_state['connectFlag'] = False
@@ -87,16 +88,3 @@ class Worker(Thread):
                     else:
                         for mes in listmes:
                             eval('self.pc.message_' + channel + '(mes)')
-
-class SuperViser(Thread):
-    def __init__(self, lth):
-        super(SuperViser, self).__init__()
-        self.lth = lth
-        self.timer = 1
-
-    def run(self) -> None:
-        while True:
-            for th in self.lth:
-                if not th.isAlive():
-                    th.start()
-            time.sleep(self.timer)
