@@ -81,7 +81,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Trading v1.2.1")
+        mainwindow.setWindowTitle("Digitex Trading v1.2.2")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -241,21 +241,13 @@ class UiMainWindow(object):
         self.l_spot.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
         self.infogridlayout.addWidget(self.l_spot, 5, 2, 1, 1)
 # ------>
-        self.l_price_mark = QLabel('Mark')
-        self.l_price_mark.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.l_price_mark, 6, 1, 1, 1)
-        self.l_mark = QLabel('0')
-        self.l_mark.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.l_mark, 6, 2, 1, 1)
+        self.ll_intimer = QLabel('Timer')
+        self.ll_intimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
+        self.infogridlayout.addWidget(self.ll_intimer, 6, 1, 1, 1)
+        self.l_intimer = QLabel('0')
+        self.l_intimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 24px")
+        self.infogridlayout.addWidget(self.l_intimer, 6, 2, 1, 1)
 # ------>
-        self.l_price_fair = QLabel('Fair')
-        self.l_price_fair.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.l_price_fair, 7, 1, 1, 1)
-        self.l_fair = QLabel('0')
-        self.l_fair.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.l_fair, 7, 2, 1, 1)
-
-
         self.splitterh.addWidget(self.infogridlayoutwidget)
         self.splitterh.setSizes([300, 300])
         self.splitterv.addWidget(self.splitterh)
@@ -269,9 +261,9 @@ class UiMainWindow(object):
         self.tm_buy = QStandardItemModel()
         self.tm_buy.setColumnCount(2)
         self.tm_buy.setHorizontalHeaderLabels(['Тики', 'К-во'])
-        for i in range(10):
+        for i in range(6):
             it1 = QStandardItem()
-            it1.setData(i + 1, Qt.DisplayRole)
+            it1.setData(i, Qt.DisplayRole)
             it1.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             it2 = QStandardItem()
             it2.setData(0, Qt.DisplayRole)
@@ -288,9 +280,9 @@ class UiMainWindow(object):
         self.tm_sell = QStandardItemModel()
         self.tm_sell.setColumnCount(2)
         self.tm_sell.setHorizontalHeaderLabels(['Тики', 'К-во'])
-        for i in range(10):
+        for i in range(6):
             it1 = QStandardItem()
-            it1.setData(i + 1, Qt.DisplayRole)
+            it1.setData(i + 0, Qt.DisplayRole)
             it1.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             it2 = QStandardItem()
             it2.setData(0, Qt.DisplayRole)

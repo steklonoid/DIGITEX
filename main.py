@@ -1,15 +1,14 @@
 import sys
 import os
-import threading
 import time
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
-from PyQt5.QtGui import QStandardItem, QStandardItemModel, QIcon
+from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
-from wss import WSThread, Worker
+from wss import WSThread, Worker, TraderStatus, InTimer
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
@@ -24,7 +23,7 @@ ACTIVE = 1
 CLOSING = 2
 
 MAXORDERDIST = 5
-MINSAFEDIST = 2
+MINSAFEDIST = 3
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
 
@@ -47,11 +46,6 @@ class Contract():
         self.origContractId = kwargs['origContractId']
         self.status = kwargs['status']
 
-class ChannelData():
-    def __init__(self, messages=[], public=True):
-        self.messages = messages
-        self.public = public
-
 class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
 
@@ -70,11 +64,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         'positionMargin':0,
         'contractValue': 0,
         'spotPx': 0,
-        'markPx': 0,
-        'fairPx':0,
-        'dgtxUsdRate':0,
-        'pnl':0,
-        'upnl':0
+        'dgtxUsdRate':0
                     }
     channels = {'orderbook_1': {'mes':[], 'public':True}, 'kline': {'mes':[], 'public':True}, 'trades': {'mes':[], 'public':True}, 'liquidations': {'mes':[], 'public':True}, 'ticker': {'mes':[], 'public':True}, 'fundingInfo': {'mes':[], 'public':True},
                 'index': {'mes':[], 'public':True}, 'tradingStatus': {'mes':[], 'public':False}, 'orderStatus': {'mes':[], 'public':False}, 'orderFilled': {'mes':[], 'public':False}, 'orderCancelled': {'mes':[], 'public':False},
@@ -87,6 +77,12 @@ class MainWindow(QMainWindow, UiMainWindow):
     last_maxbid = 0
     current_minask = 0
     last_minask = 0
+
+    pnl = 0
+    lastpnl = 0
+    upnl = 0
+    pnltimer = 0
+    deltapnl = 0
 
     listOrders = []
     listContracts = []
@@ -135,7 +131,14 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.worker = Worker(self)
         self.worker.daemon = True
         self.worker.start()
+        # создание потока, который получает данные TraderStatus
+        self.traderStatus = TraderStatus(self)
+        self.traderStatus.daemon = True
+        self.traderStatus.start()
 
+        self.intimer = InTimer(self)
+        self.intimer.daemon = True
+        self.intimer.start()
 
     def closeEvent(self, *args, **kwargs):
         if self.db.isOpen():
@@ -162,7 +165,11 @@ class MainWindow(QMainWindow, UiMainWindow):
             iv = derived[0:IV_SIZE]
             key = derived[IV_SIZE:]
             ak = AES.new(key, AES.MODE_CFB, iv).decrypt(en_ak_byte[SALT_SIZE:]).decode('utf-8')
-            self.dxthread.send_privat('auth', type='token', value=ak)
+            if self.cur_state['connectFlag']:
+                try:
+                    self.dxthread.send_privat('auth', type='token', value=ak)
+                except:
+                    pass
 
     @pyqtSlot()
     def buttonLogin_clicked(self):
@@ -204,78 +211,91 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def startbutton_clicked(self):
-        self.cur_state['tradingFlag'] = not self.cur_state['tradingFlag']
-        if self.cur_state['tradingFlag']:
-            self.startbutton.setText('СТОП')
-            self.last_cellprice = 0
-        else:
-            self.startbutton.setText('СТАРТ')
-            self.dxthread.send_privat('cancelAllOrders', symbol=self.cur_state['symbol'])
+        if self.cur_state['connectFlag']:
+            self.cur_state['tradingFlag'] = not self.cur_state['tradingFlag']
+            if self.cur_state['tradingFlag']:
+                self.startbutton.setText('СТОП')
+                self.last_cellprice = 0
+            else:
+                self.startbutton.setText('СТАРТ')
+                try:
+                    self.dxthread.send_privat('cancelAllOrders', symbol=self.cur_state['symbol'])
+                except:
+                    pass
 
     @pyqtSlot()
     def buttonLeverage_clicked(self):
-        rw = ChangeLeverage()
-        rw.setupUi(self.cur_state['leverage'])
-        rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.cur_state['symbol'], leverage=int(rw.lineedit_leverage.text())))
-        rw.exec_()
+        if self.cur_state['connectFlag']:
+            rw = ChangeLeverage()
+            rw.setupUi(self.cur_state['leverage'])
+            rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.cur_state['symbol'], leverage=int(rw.lineedit_leverage.text())))
+            rw.exec_()
 
     @pyqtSlot()
     def pb_buy_clicked(self):
-        for i in range(self.tm_buy.rowCount()):
-            current_dist = self.tm_buy.item(i, 0).data(Qt.DisplayRole)
-            value = self.tm_buy.item(i, 1).data(Qt.DisplayRole)
-            if value != 0:
-                id = self.returnid()
-                pricetoBuy = min(self.current_cellprice,
-                                 self.cur_state['minAsk'] - self.cur_state['orderDist'] * current_dist)
-                self.dxthread.send_privat('placeOrder',
-                                          clOrdId=id,
-                                          symbol=self.cur_state['symbol'],
-                                          ordType='LIMIT',
-                                          timeInForce='GTC',
-                                          side='BUY',
-                                          px=pricetoBuy,
-                                          qty=self.cur_state['numconts'])
-                self.listOrders.append(Order(
-                    clOrdId=id,
-                    origClOrdId=id,
-                    orderSide='BUY',
-                    orderType='LIMIT',
-                    px=pricetoBuy,
-                    qty=self.cur_state['numconts'],
-                    leverage=self.cur_state['leverage'],
-                    paidPx=0,
-                    type=MANUAL,
-                    status=OPENING))
+        if self.cur_state['connectFlag']:
+            for i in range(self.tm_buy.rowCount()):
+                current_dist = self.tm_buy.item(i, 0).data(Qt.DisplayRole)
+                value = self.tm_buy.item(i, 1).data(Qt.DisplayRole)
+                if value != 0:
+                    id = self.returnid()
+                    pricetoBuy = min(self.current_cellprice,
+                                     self.cur_state['minAsk'] - self.cur_state['orderDist'] * current_dist)
+                    try:
+                        self.dxthread.send_privat('placeOrder',
+                                                  clOrdId=id,
+                                                  symbol=self.cur_state['symbol'],
+                                                  ordType='LIMIT',
+                                                  timeInForce='GTC',
+                                                  side='BUY',
+                                                  px=pricetoBuy,
+                                                  qty=self.cur_state['numconts'])
+                        self.listOrders.append(Order(
+                            clOrdId=id,
+                            origClOrdId=id,
+                            orderSide='BUY',
+                            orderType='LIMIT',
+                            px=pricetoBuy,
+                            qty=self.cur_state['numconts'],
+                            leverage=self.cur_state['leverage'],
+                            paidPx=0,
+                            type=MANUAL,
+                            status=OPENING))
+                    except:
+                        pass
 
     @pyqtSlot()
     def pb_sell_clicked(self):
-        for i in range(self.tm_sell.rowCount()):
-            current_dist = self.tm_sell.item(i, 0).data(Qt.DisplayRole)
-            value = self.tm_sell.item(i, 1).data(Qt.DisplayRole)
-            if value != 0:
-                id = self.returnid()
-                pricetoSell = max(self.current_cellprice,
-                                  self.cur_state['maxBid'] + self.cur_state['orderDist'] * current_dist)
-                self.dxthread.send_privat('placeOrder',
-                                          clOrdId=id,
-                                          symbol=self.cur_state['symbol'],
-                                          ordType='LIMIT',
-                                          timeInForce='GTC',
-                                          side='SELL',
-                                          px=pricetoSell,
-                                          qty=self.cur_state['numconts'])
-                self.listOrders.append(Order(
-                    clOrdId=id,
-                    origClOrdId=id,
-                    orderSide='SELL',
-                    orderType='LIMIT',
-                    px=pricetoSell,
-                    qty=self.cur_state['numconts'],
-                    leverage=self.cur_state['leverage'],
-                    paidPx=0,
-                    type=MANUAL,
-                    status=OPENING))
+        if self.cur_state['connectFlag']:
+            for i in range(self.tm_sell.rowCount()):
+                current_dist = self.tm_sell.item(i, 0).data(Qt.DisplayRole)
+                value = self.tm_sell.item(i, 1).data(Qt.DisplayRole)
+                if value != 0:
+                    id = self.returnid()
+                    pricetoSell = max(self.current_cellprice,
+                                      self.cur_state['maxBid'] + self.cur_state['orderDist'] * current_dist)
+                    try:
+                        self.dxthread.send_privat('placeOrder',
+                                                  clOrdId=id,
+                                                  symbol=self.cur_state['symbol'],
+                                                  ordType='LIMIT',
+                                                  timeInForce='GTC',
+                                                  side='SELL',
+                                                  px=pricetoSell,
+                                                  qty=self.cur_state['numconts'])
+                        self.listOrders.append(Order(
+                            clOrdId=id,
+                            origClOrdId=id,
+                            orderSide='SELL',
+                            orderType='LIMIT',
+                            px=pricetoSell,
+                            qty=self.cur_state['numconts'],
+                            leverage=self.cur_state['leverage'],
+                            paidPx=0,
+                            type=MANUAL,
+                            status=OPENING))
+                    except:
+                        pass
 
     def update_cur_state(self, data):
         self.cur_state['traderBalance'] = data['traderBalance']
@@ -292,40 +312,55 @@ class MainWindow(QMainWindow, UiMainWindow):
         available = round(data['traderBalance'] - data['orderMargin'] - data['positionMargin'], 4)
         self.l_available_dgtx.setText(str(available))
         self.l_available_usd.setText(str(round(available * self.cur_state['dgtxUsdRate'], 2)))
-        self.cur_state['pnl'] = data['pnl']
-        self.l_pnl.setText(str(data['pnl']))
-        self.cur_state['upnl'] = data['upnl']
-        self.l_upnl.setText(str(data['upnl']))
 
     def changemarketsituation(self):
+        distlist = {}
         if self.current_cellprice != 0:
             current_dist = ex[self.cur_state['symbol']]['TICK_SIZE']
-            distlist = []
-            for dist in range(self.current_cellprice - current_dist * MAXORDERDIST, self.current_cellprice + current_dist * (MAXORDERDIST + 1), current_dist):
-                if (dist <= self.current_maxbid - current_dist * MINSAFEDIST) or (dist >= self.current_minask + current_dist * MINSAFEDIST):
-                    distlist.append(dist)
+            spotdist = 0
+            spotmod = self.tm_buy.item(spotdist, 1).data(Qt.DisplayRole)
+            price = self.current_cellprice
+            maxrow = self.tm_sell.rowCount() - 1
+            bonddist = min(max(max(price - self.current_minask, self.current_maxbid - price) // current_dist, 0), maxrow)
+            bondmod = self.tm_sell.item(bonddist, 1).data(Qt.DisplayRole)
+            if spotmod * bondmod != 0:
+                distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
+            for spotdist in range(1, MAXORDERDIST + 1):
+                spotmod = self.tm_buy.item(spotdist, 1).data(Qt.DisplayRole)
+                price = self.current_cellprice + spotdist * current_dist
+                bonddist = min(max(max(price - self.current_minask, self.current_maxbid - price) // current_dist, 0), maxrow)
+                bondmod = self.tm_sell.item(bonddist, 1).data(Qt.DisplayRole)
+                if spotmod * bondmod != 0:
+                    distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
+                price = self.current_cellprice - spotdist * current_dist
+                bonddist = min(max(max(price - self.current_minask, self.current_maxbid - price) // current_dist, 0), maxrow)
+                bondmod = self.tm_sell.item(bonddist, 1).data(Qt.DisplayRole)
+                if spotmod * bondmod != 0:
+                    distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
+
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
         for order in self.listOrders:
             if order.status == ACTIVE:
-                if order.px not in distlist:
-                    self.dxthread.send_privat('cancelOrder', symbol=self.cur_state['symbol'],
-                                                            clOrdId=order.clOrdId)
-                    order.status = CLOSING
+                qty = distlist.get(order.px)
+                if qty != order.qty:
+                    try:
+                        self.dxthread.send_privat('cancelOrder', symbol=self.cur_state['symbol'],
+                                                                clOrdId=order.clOrdId)
+                        order.status = CLOSING
+                    except:
+                        pass
         # автоматически открываем ордеры
-        if self.cur_state['tradingFlag']:
-            available = self.cur_state['traderBalance'] - self.cur_state['orderMargin'] - self.cur_state[
-                'positionMargin']
-            req_margin = self.cur_state['contractValue'] * self.cur_state['numconts'] / self.cur_state[
-                'leverage']
-            if req_margin < available:
-                listorderdist = [x.px for x in self.listOrders]
-                for dist in distlist:
-                    if dist not in listorderdist:
-                        if dist < self.current_maxbid:
-                            side = 'BUY'
-                        else:
-                            side = 'SELL'
-                        id = self.returnid()
+        if self.cur_state['tradingFlag'] and len(self.listContracts) == 0:
+            orddict = {x.px:x.qty for x in self.listOrders}
+            for dist in distlist.keys():
+                qty = orddict.get(dist)
+                if qty != distlist[dist]:
+                    if dist < self.current_maxbid:
+                        side = 'BUY'
+                    else:
+                        side = 'SELL'
+                    id = self.returnid()
+                    try:
                         self.dxthread.send_privat('placeOrder',
                                                   clOrdId=id,
                                                   symbol=self.cur_state['symbol'],
@@ -333,18 +368,20 @@ class MainWindow(QMainWindow, UiMainWindow):
                                                   timeInForce='GTC',
                                                   side=side,
                                                   px=dist,
-                                                  qty=self.cur_state['numconts'])
+                                                  qty=distlist[dist])
                         self.listOrders.append(Order(
                             clOrdId=id,
                             origClOrdId=id,
                             orderSide=side,
                             orderType='LIMIT',
                             px=dist,
-                            qty=self.cur_state['numconts'],
+                            qty=distlist[dist],
                             leverage=self.cur_state['leverage'],
                             paidPx=0,
                             type=AUTO,
                             status=OPENING))
+                    except:
+                        pass
     # ========== обработчик респонсов ============
     def message_response(self, id, status):
         a = id
@@ -353,7 +390,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_orderbook_1(self, data):
         self.current_maxbid = data.get('bids')[0][0]
         self.current_minask = data.get('asks')[0][0]
-        if (self.current_maxbid != self.last_maxbid) or (self.current_minask != self.last_minask):
+        if ((self.current_maxbid != self.last_maxbid) or (self.current_minask != self.last_minask)) and self.cur_state['connectFlag']:
             self.changemarketsituation()
         self.last_maxbid = self.current_maxbid
         self.last_minask = self.current_minask
@@ -377,23 +414,23 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_index(self, data):
         self.cur_state['spotPx'] = data['spotPx']
         self.l_spot.setText(str(data['spotPx']))
-        self.cur_state['markPx'] = data['markPx']
-        self.l_mark.setText(str(data['markPx']))
-        self.cur_state['fairPx'] = data['fairPx']
-        self.l_fair.setText(str(data['fairPx']))
 
-        current_dist = ex[self.cur_state['symbol']]['TICK_SIZE']
-        self.current_cellprice = math.floor(self.cur_state['spotPx'] / current_dist) * current_dist
-        if self.current_cellprice != self.last_cellprice:
-            self.changemarketsituation()
-        self.last_cellprice = self.current_cellprice
+        if self.cur_state['connectFlag']:
+            current_dist = ex[self.cur_state['symbol']]['TICK_SIZE']
+            self.current_cellprice = math.floor(self.cur_state['spotPx'] / current_dist) * current_dist
+            if self.current_cellprice != self.last_cellprice:
+                self.changemarketsituation()
+            self.last_cellprice = self.current_cellprice
 
-        # завершаем открытые контракты
-        for cont in self.listContracts:
-            if cont.status == ACTIVE:
-                self.dxthread.send_privat('closeContract', symbol=self.cur_state['symbol'],
-                                          contractId=cont.contractId, ordType='MARKET')
-                cont.status = CLOSING
+            # завершаем открытые контракты
+            for cont in self.listContracts:
+                if cont.status == ACTIVE:
+                    try:
+                        self.dxthread.send_privat('closeContract', symbol=self.cur_state['symbol'],
+                                                  contractId=cont.contractId, ordType='MARKET')
+                        cont.status = CLOSING
+                    except:
+                        pass
 
 
     # ==== приватные сообщения
@@ -405,7 +442,11 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.statusbar.showMessage('Торговля разрешена')
             self.buttonAK.setStyleSheet("color:rgb(32, 192, 32);font: bold 11px; border: none;")
             self.buttonAK.setText('верный api key')
-            self.dxthread.send_privat('getTraderStatus', symbol=self.cur_state['symbol'])
+            if self.cur_state['connectFlag']:
+                try:
+                    self.dxthread.send_privat('getTraderStatus', symbol=self.cur_state['symbol'])
+                except:
+                    pass
         else:
             self.statusbar.showMessage('Торговля запрещена')
             self.buttonAK.setStyleSheet("color:rgb(192, 32, 32);font: bold 11px; border: none;")
@@ -436,6 +477,9 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.update_cur_state(data)
+        self.pnl = data['pnl']
+        self.lastpnl = self.pnl
+
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
             orderidtoremove = data['origClOrdId']
@@ -472,6 +516,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         a = data
 
     def message_traderStatus(self, data):
+        self.pnl = data['pnl']
+        self.l_pnl.setText(str(data['pnl']))
+        self.deltapnl = self.pnl - self.lastpnl
+        if self.deltapnl > 0:
+            self.pnltimer = time.time()
+        self.upnl = data['upnl']
+        self.l_upnl.setText(str(data['upnl']))
         self.update_cur_state(data)
 
     def message_leverage(self, data):

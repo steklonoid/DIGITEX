@@ -14,16 +14,18 @@ class WSThread(Thread):
     def run(self) -> None:
         def on_open(wsapp):
             self.pc.cur_state['connectFlag'] = True
+            self.pc.statusbar.showMessage('Есть соединение с сервером')
             self.pc.buttonBTC.clicked.emit()
             self.pc.pb_numcont_1.clicked.emit()
 
         def on_close(wsapp):
             self.pc.cur_state['connectFlag'] = False
-            self.done()
+            self.pc.statusbar.showMessage('Нет соединения с сервером')
+
 
         def on_error(wsapp, error):
             self.pc.cur_state['connectFlag'] = False
-            self.done()
+            self.pc.statusbar.showMessage(error)
 
         def on_message(wssapp, message):
             if message == 'ping':
@@ -42,7 +44,11 @@ class WSThread(Thread):
 
 
         self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_close=on_close, on_error=on_error, on_message=on_message)
-        self.wsapp.run_forever()
+        while True:
+            try:
+                self.wsapp.run_forever()
+            except:
+                pass
 
     def changeEx(self, name, lastname):
         if lastname != '':
@@ -68,7 +74,7 @@ class Worker(Thread):
     def __init__(self, pc):
         super(Worker, self).__init__()
         self.pc = pc
-        self.timer = 0.15
+        self.timer = 0.12
         self.lock = Lock()
 
     def run(self) -> None:
@@ -88,3 +94,32 @@ class Worker(Thread):
                     else:
                         for mes in listmes:
                             eval('self.pc.message_' + channel + '(mes)')
+
+class TraderStatus(Thread):
+    def __init__(self, pc):
+        super(TraderStatus, self).__init__()
+        self.pc = pc
+        self.timer = 1
+        self.lock = Lock()
+
+    def run(self) -> None:
+        while True:
+            time.sleep(self.timer)
+            if self.pc.cur_state['connectFlag']:
+                try:
+                    self.pc.dxthread.send_privat('getTraderStatus', symbol=self.pc.cur_state['symbol'])
+                except:
+                    pass
+
+class InTimer(Thread):
+    def __init__(self, pc):
+        super(InTimer, self).__init__()
+        self.pc = pc
+        self.timer = 1
+        self.lock = Lock()
+
+    def run(self) -> None:
+        while True:
+            time.sleep(self.timer)
+            if self.pc.pnl != self.pc.lastpnl:
+                self.pc.l_intimer.setText(str(round((time.time() - self.pc.pnltimer)/1000, 1)))
