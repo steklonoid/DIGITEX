@@ -314,35 +314,28 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_available_usd.setText(str(round(available * self.cur_state['dgtxUsdRate'], 2)))
 
     def changemarketsituation(self):
-        distlist = {}
         if self.current_cellprice != 0:
+            distlist = {}
             current_dist = ex[self.cur_state['symbol']]['TICK_SIZE']
-            spotdist = 0
-            spotmod = self.tm_buy.item(spotdist, 1).data(Qt.DisplayRole)
-            price = self.current_cellprice
-            maxrow = self.tm_sell.rowCount() - 1
-            bonddist = min(max(max(price - self.current_minask, self.current_maxbid - price) // current_dist, 0), maxrow)
-            bondmod = self.tm_sell.item(bonddist, 1).data(Qt.DisplayRole)
-            if spotmod * bondmod != 0:
-                distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
-            for spotdist in range(1, MAXORDERDIST + 1):
-                spotmod = self.tm_buy.item(spotdist, 1).data(Qt.DisplayRole)
+            for spotdist in range(-MAXORDERDIST, MAXORDERDIST + 1):
+                spotmod = self.tm_buy.item(int(math.fabs(spotdist)), 1).data(Qt.DisplayRole)
                 price = self.current_cellprice + spotdist * current_dist
-                bonddist = min(max(max(price - self.current_minask, self.current_maxbid - price) // current_dist, 0), maxrow)
-                bondmod = self.tm_sell.item(bonddist, 1).data(Qt.DisplayRole)
-                if spotmod * bondmod != 0:
-                    distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
-                price = self.current_cellprice - spotdist * current_dist
-                bonddist = min(max(max(price - self.current_minask, self.current_maxbid - price) // current_dist, 0), maxrow)
+                if price < self.current_maxbid:
+                    bonddist = (self.current_maxbid - price) // current_dist
+                elif price > self.current_minask:
+                    bonddist = (price - self.current_minask) // current_dist
+                else:
+                    bonddist = 0
+                bonddist = min(bonddist, MAXORDERDIST)
                 bondmod = self.tm_sell.item(bonddist, 1).data(Qt.DisplayRole)
                 if spotmod * bondmod != 0:
                     distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
 
+
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
         for order in self.listOrders:
             if order.status == ACTIVE:
-                qty = distlist.get(order.px)
-                if qty != order.qty:
+                if order.px not in distlist.keys():
                     try:
                         self.dxthread.send_privat('cancelOrder', symbol=self.cur_state['symbol'],
                                                                 clOrdId=order.clOrdId)
@@ -351,10 +344,8 @@ class MainWindow(QMainWindow, UiMainWindow):
                         pass
         # автоматически открываем ордеры
         if self.cur_state['tradingFlag'] and len(self.listContracts) == 0:
-            orddict = {x.px:x.qty for x in self.listOrders}
             for dist in distlist.keys():
-                qty = orddict.get(dist)
-                if qty != distlist[dist]:
+                if dist not in self.listOrders:
                     if dist < self.current_maxbid:
                         side = 'BUY'
                     else:
