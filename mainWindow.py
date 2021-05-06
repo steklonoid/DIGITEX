@@ -1,19 +1,22 @@
 # модуль главного окна
-from PyQt5.QtCore import Qt, pyqtSlot
+from PyQt5.QtCore import Qt, pyqtSlot, QRectF
 from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QOpenGLWidget, QSizePolicy, QGroupBox, QTableView, QAbstractItemView, QHeaderView
-from PyQt5.QtGui import QIcon, QPainter, QStandardItemModel, QStandardItem
+from PyQt5.QtGui import QIcon, QPainter, QStandardItemModel, QStandardItem, QPen, QColor, QFont, QPainterPath
 from OpenGL import GL
 import time
 
 class DisplayField(QOpenGLWidget):
-    def __init__(self):
+    def __init__(self, pc):
         QWidget.__init__(self)
+        self.pc = pc
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setContentsMargins(0, 0, 0, 0)
-        self.checktime = time.time()
-        self.alpha = 255
-        self.alphadirect = -1
-        self.alphavel = 60
+
+        self.downaxe = 20   # размер поля для отображения легенды нижней оси, px
+        self.rightaxe = 50  # размер поля для отображения легенды правой оси, px
+        self.upaxe = 20     # размер поля для отображения легенды верхней оси, px
+        self.fontcurprice = QFont("Helvetica", 14, QFont.Bold)
+        self.fontcellprice = QFont("Helvetica", 10, QFont.Bold)
 
     def initializeGL(self) -> None:
         GL.glClearColor(0, 0, 0, 1)
@@ -23,9 +26,35 @@ class DisplayField(QOpenGLWidget):
 
     def paintGL(self) -> None:
         painter = QPainter(self)
-        # width = painter.viewport().width()  # текущая ширина окна рисования
-        # height = painter.viewport().height()  # текущая высота окна рисования
-        # painter.fillRect(0, 0, width, height, Qt.black)  # очищаем окно (черный цвет)
+        width = painter.viewport().width() - self.rightaxe  # текущая ширина окна рисования
+        height = painter.viewport().height()  # текущая высота окна рисования
+        painter.beginNativePainting()
+        # рисуем оси
+        painter.setPen(QPen(Qt.white, 1))
+        painter.drawLine(0, height - self.downaxe, width, height - self.downaxe)
+        painter.drawLine(width, 0, width, height - self.downaxe)
+        n = width // (2 * self.pc.hscale)
+        for i in range(-n, n + 1):
+            painter.setPen(QPen(QColor(0, 96, 0), 1, Qt.DotLine))
+            x = width // 2 + self.pc.hscale * i
+            painter.drawLine(x, 0, x, height - self.downaxe)
+            painter.setPen(QPen(Qt.white, 1))
+            painter.drawText(x, height, str(i)+' с')
+        # выводим цену
+        painter.setPen(QPen(QColor(255, 255, 0), 1))
+        painter.setFont(self.fontcurprice)
+        painter.drawText(10, 20, str(round(self.pc.spotPx, 1)))
+        #   выводим справа ячейки с ценой
+        painter.setPen(QPen(Qt.white, 1))
+        painter.setFont(self.fontcellprice)
+        n = height // self.pc.vscale
+        price0 = self.pc.current_cellprice - (n * self.pc.exDist // 2 )
+        for i in range(n):
+            painter.drawText(width + 5, i * self.pc.vscale, str(price0 + i * self.pc.exDist))
+
+
+
+        painter.endNativePainting()
 
 class UiMainWindow(object):
     def __init__(self):
@@ -142,7 +171,7 @@ class UiMainWindow(object):
         #   горизонтальный сплиттер, делящий остальное пространство внизу на две части
         self.splitterv = QSplitter(Qt.Vertical)
         self.splitterh = QSplitter(Qt.Horizontal)
-        self.graphicsview = DisplayField()
+        self.graphicsview = DisplayField(mainwindow)
         self.splitterh.addWidget(self.graphicsview)
         self.infogridlayoutwidget = QWidget()
         self.infogridlayout = QGridLayout(self.infogridlayoutwidget)
@@ -231,16 +260,6 @@ class UiMainWindow(object):
         self.buttonLeverage.setEnabled(False)
         self.infogridlayout.addWidget(self.buttonLeverage, 4, 1, 1, 4)
 # ------>
-        self.l_price = QLabel('Цены:')
-        self.l_price.setStyleSheet("color:rgb(0, 0, 32); font: bold 16px")
-        self.infogridlayout.addWidget(self.l_price, 5, 0, 1, 1)
-        self.l_price_spot = QLabel('Spot')
-        self.l_price_spot.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.l_price_spot, 5, 1, 1, 1)
-        self.l_spot = QLabel('0')
-        self.l_spot.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.l_spot, 5, 2, 1, 1)
-# ------>
         self.ll_intimer = QLabel('Timer')
         self.ll_intimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
         self.infogridlayout.addWidget(self.ll_intimer, 6, 1, 1, 1)
@@ -296,16 +315,6 @@ class UiMainWindow(object):
         self.tw_sell.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tw_sell.clicked.connect(tw_sell_clicked)
         self.gl_manual.addWidget(self.tw_sell, 0, 1, 1, 1)
-        self.pb_buy = QPushButton()
-        self.pb_buy.setObjectName('pb_buy')
-        self.pb_buy.setText('BUY')
-        self.pb_buy.clicked.connect(self.pb_buy_clicked)
-        self.gl_manual.addWidget(self.pb_buy, 1, 0, 1, 1)
-        self.pb_sell = QPushButton()
-        self.pb_sell.setObjectName('pb_sell')
-        self.pb_sell.setText('SELL')
-        self.pb_sell.clicked.connect(self.pb_sell_clicked)
-        self.gl_manual.addWidget(self.pb_sell, 1, 1, 1, 1)
         self.bottom_hspacer.addWidget(self.gb_manual)
 
         self.gb_auto = QGroupBox()

@@ -13,18 +13,17 @@ class WSThread(Thread):
 
     def run(self) -> None:
         def on_open(wsapp):
-            self.pc.cur_state['connectFlag'] = True
+            self.pc.flConnect = True
             self.pc.statusbar.showMessage('Есть соединение с сервером')
             self.pc.buttonBTC.clicked.emit()
             self.pc.pb_numcont_1.clicked.emit()
 
         def on_close(wsapp):
-            self.pc.cur_state['connectFlag'] = False
+            self.pc.flConnect = False
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
 
         def on_error(wsapp, error):
-            self.pc.cur_state['connectFlag'] = False
             self.pc.statusbar.showMessage(error)
 
         def on_message(wssapp, message):
@@ -35,18 +34,21 @@ class WSThread(Thread):
                 if self.message.get('id'):
                     id = self.message.get('id')
                     status = self.message.get('status')
-                if self.message.get('ch'):
+                elif self.message.get('ch'):
                     channel = self.message.get('ch')
                     data = self.message.get('data')
                     self.lock.acquire()
                     self.pc.channels[channel]['mes'].append(data)
                     self.lock.release()
+                else:
+                    pass
 
-
-        self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open, on_close=on_close, on_error=on_error, on_message=on_message)
         while True:
             try:
+                self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open,
+                                                    on_close=on_close, on_error=on_error, on_message=on_message)
                 self.wsapp.run_forever()
+                self.pc.statusbar.showMessage('Восстановление соединения с сервером')
             except:
                 pass
 
@@ -61,24 +63,30 @@ class WSThread(Thread):
         if params:
             pd['params'] = list(params)
         strpar = json.dumps(pd)
-        self.wsapp.send(strpar)
+        try:
+            self.wsapp.send(strpar)
+        except:
+            pass
         time.sleep(0.1)
 
     def send_privat(self, method, **params):
         pd = {'id':self.methods.get(method), 'method':method, 'params':params}
         strpar = json.dumps(pd)
-        self.wsapp.send(strpar)
+        try:
+            self.wsapp.send(strpar)
+        except:
+            pass
         time.sleep(0.1)
 
 class Worker(Thread):
     def __init__(self, pc):
         super(Worker, self).__init__()
         self.pc = pc
-        self.timer = 0.12
+        self.timer = 0.1
         self.lock = Lock()
 
     def run(self) -> None:
-        while True:
+        while not self.pc.flClosing:
             time.sleep(self.timer)
             chkeys = self.pc.channels.keys()
             for channel in chkeys:
@@ -100,26 +108,31 @@ class TraderStatus(Thread):
         super(TraderStatus, self).__init__()
         self.pc = pc
         self.timer = 1
-        self.lock = Lock()
 
     def run(self) -> None:
-        while True:
+        while not self.pc.flClosing:
             time.sleep(self.timer)
-            if self.pc.cur_state['connectFlag']:
-                try:
-                    self.pc.dxthread.send_privat('getTraderStatus', symbol=self.pc.cur_state['symbol'])
-                except:
-                    pass
+            if self.pc.flConnect:
+                self.pc.dxthread.send_privat('getTraderStatus', symbol=self.pc.cur_state['symbol'])
 
 class InTimer(Thread):
     def __init__(self, pc):
         super(InTimer, self).__init__()
         self.pc = pc
-        self.timer = 1
-        self.lock = Lock()
+        self.timer = 0.1
 
     def run(self) -> None:
-        while True:
+        while not self.pc.flClosing:
             time.sleep(self.timer)
-            if self.pc.pnl != self.pc.lastpnl:
-                self.pc.l_intimer.setText(str(round((time.time() - self.pc.pnltimer)/1000, 1)))
+            self.pc.l_intimer.setText(str(round(time.time() - self.pc.pnltimer, 1)))
+
+class Animator(Thread):
+    def __init__(self, pc):
+        super(Animator, self).__init__()
+        self.pc = pc
+        self.timer = 1/25
+
+    def run(self) -> None:
+        while not self.pc.flClosing:
+            time.sleep(self.timer)
+            self.pc.graphicsview.update()
