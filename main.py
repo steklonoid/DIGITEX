@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import queue
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5.QtGui import QIcon
@@ -132,23 +133,28 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.setupui(self)
         self.show()
 
-        # создание потока, в котором происходит подключение к вебсокету, обработка приходящих сообщений и запись их
-        # в переменную channels
+        self.publicf = {'orderbook_1':{'q':queue.LifoQueue(), 'f':self.message_orderbook_1},
+                        'index':{'q':queue.LifoQueue(), 'f':self.message_index},
+                        'ticker':{'q':queue.LifoQueue(), 'f':self.message_ticker}}
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
-        # создание потока, который читает данные из переменной channels и обрабатывает их
-        self.worker = Worker(self)
-        self.worker.daemon = True
-        self.worker.start()
-        # создание потока, который получает данные TraderStatus
-        self.traderStatus = TraderStatus(self)
-        self.traderStatus.daemon = True
-        self.traderStatus.start()
 
-        self.intimer = InTimer(self)
-        self.intimer.daemon = True
-        self.intimer.start()
+        self.publicp = []
+        for ch in self.publicf.keys():
+            p = Worker(self.publicf[ch]['q'], self.publicf[ch]['f'])
+            self.publicp.append(p)
+            p.daemon = True
+            p.start()
+
+        # # создание потока, который получает данные TraderStatus
+        # self.traderStatus = TraderStatus(self)
+        # self.traderStatus.daemon = True
+        # self.traderStatus.start()
+        #
+        # self.intimer = InTimer(self)
+        # self.intimer.daemon = True
+        # self.intimer.start()
 
         self.animator = Animator(self)
         self.animator.daemon = True
@@ -158,9 +164,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.flClosing = True
         if self.db.isOpen():
             self.db.close()
-        while self.animator.is_alive() or self.worker.is_alive() or self.intimer.is_alive() or self.traderStatus.is_alive():
-            pass
-
 
     def returnid(self):
         id = str(round(time.time() * 1000000))
@@ -224,7 +227,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.exDist = ex[name]['TICK_SIZE']
             self.dxthread.changeEx(name, lastname)
 
-
     @pyqtSlot()
     def startbutton_clicked(self):
         if self.flConnect:
@@ -277,7 +279,6 @@ class MainWindow(QMainWindow, UiMainWindow):
                 if spotmod * bondmod != 0:
                     distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
 
-
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
         for order in self.listOrders:
             if order.status == ACTIVE:
@@ -320,6 +321,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     # ========== обработчики сообщений ===========
     # ==== публичные сообщения
     def message_orderbook_1(self, data):
+        print(data)
         self.current_maxbid = data.get('bids')[0][0]
         self.current_minask = data.get('asks')[0][0]
         if ((self.current_maxbid != self.last_maxbid) or (self.current_minask != self.last_minask)) and self.flConnect:
@@ -408,8 +410,7 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.update_cur_state(data)
-        self.pnl = data['pnl']
-        self.lastpnl = self.pnl
+        self.lastpnl = self.pnl = data['pnl']
 
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':

@@ -4,12 +4,12 @@ import json
 import time
 
 class WSThread(Thread):
-    methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6, 'cancelAllOrders':7, 'placeCondOrder':8, 'cancelCondOrder':9, 'closeContract':10, 'closePosition':11, 'getTraderStatus':12, 'changeLeverageAll':13}
+    methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6,
+               'cancelAllOrders':7, 'placeCondOrder':8, 'cancelCondOrder':9, 'closeContract':10, 'closePosition':11,
+               'getTraderStatus':12, 'changeLeverageAll':13}
     def __init__(self, pc):
         super(WSThread, self).__init__()
-        self.message = dict()
         self.pc = pc
-        self.lock = Lock()
 
     def run(self) -> None:
         def on_open(wsapp):
@@ -22,7 +22,6 @@ class WSThread(Thread):
             self.pc.flConnect = False
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
-
         def on_error(wsapp, error):
             self.pc.statusbar.showMessage(error)
 
@@ -31,17 +30,9 @@ class WSThread(Thread):
                 wssapp.send('pong')
             else:
                 self.message = json.loads(message)
-                if self.message.get('id'):
-                    id = self.message.get('id')
-                    status = self.message.get('status')
-                elif self.message.get('ch'):
-                    channel = self.message.get('ch')
-                    data = self.message.get('data')
-                    self.lock.acquire()
-                    self.pc.channels[channel]['mes'].append(data)
-                    self.lock.release()
-                else:
-                    pass
+                ch = self.message.get('ch')
+                if ch:
+                    self.pc.publicf[ch]['q'].put(self.message.get('data'))
 
         while True:
             try:
@@ -79,29 +70,15 @@ class WSThread(Thread):
         time.sleep(0.1)
 
 class Worker(Thread):
-    def __init__(self, pc):
+    def __init__(self, q, f):
         super(Worker, self).__init__()
-        self.pc = pc
-        self.timer = 0.1
-        self.lock = Lock()
+        self.q = q
+        self.f = f
 
     def run(self) -> None:
-        while not self.pc.flClosing:
-            time.sleep(self.timer)
-            chkeys = self.pc.channels.keys()
-            for channel in chkeys:
-                self.lock.acquire()
-                listmes = list(self.pc.channels[channel]['mes'])
-                self.pc.channels[channel]['mes'].clear()
-                public = self.pc.channels[channel]['public']
-                self.lock.release()
-                if listmes:
-                    if public:
-                        data = listmes[-1]
-                        eval('self.pc.message_' + channel + '(data)')
-                    else:
-                        for mes in listmes:
-                            eval('self.pc.message_' + channel + '(mes)')
+        while True:
+            data = self.q.get()
+            self.f(data)
 
 class TraderStatus(Thread):
     def __init__(self, pc):
