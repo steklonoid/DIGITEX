@@ -75,7 +75,7 @@ class UiMainWindow(object):
         def numcont_choose():
             b = self.sender().objectName()
             value = int(b.replace('pb_numcont_', ''))
-            self.cur_state['numconts'] = value
+            self.numconts = value
             for b in self.numcontbuttonlist:
                 if b == self.sender():
                     b.setIcon(QIcon("./images/buttononlineicon.png"))
@@ -110,7 +110,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Trading v1.2.2")
+        mainwindow.setWindowTitle("Digitex Trading v1.3.1")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")

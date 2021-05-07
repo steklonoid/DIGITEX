@@ -1,6 +1,8 @@
+import random
 import sys
 import os
 import time
+import queue
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5.QtGui import QIcon
@@ -8,11 +10,12 @@ from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
-from wss import WSThread, Worker, TraderStatus, InTimer, Animator
+from wss import WSThread, Worker, Sender, TraderStatus, InTimer, Animator
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
 import numpy as np
+from threading import Lock
 
 # = order type
 AUTO = 0
@@ -49,25 +52,20 @@ class Contract():
 
 class MainWindow(QMainWindow, UiMainWindow):
     settings = QSettings("./config.ini", QSettings.IniFormat)   # файл настроек
+    lock = Lock()
 
     user = ''
     psw = ''
 
-    cur_state = {
-        'symbol': '',
-        'numconts': 1,
-        'leverage': 0,
-        'traderBalance': 0,
-        'orderMargin': 0,
-        'positionMargin':0,
-        'contractValue': 0,
-        'dgtxUsdRate':0
-                    }
-    channels = {'orderbook_1': {'mes':[], 'public':True}, 'kline': {'mes':[], 'public':True}, 'trades': {'mes':[], 'public':True}, 'liquidations': {'mes':[], 'public':True}, 'ticker': {'mes':[], 'public':True}, 'fundingInfo': {'mes':[], 'public':True},
-                'index': {'mes':[], 'public':True}, 'tradingStatus': {'mes':[], 'public':False}, 'orderStatus': {'mes':[], 'public':False}, 'orderFilled': {'mes':[], 'public':False}, 'orderCancelled': {'mes':[], 'public':False},
-                'condOrderStatus': {'mes':[], 'public':False}, 'contractClosed': {'mes':[], 'public':False}, 'traderStatus': {'mes':[], 'public':False}, 'leverage': {'mes':[], 'public':False}, 'funding': {'mes':[], 'public':False},
-                'position': {'mes':[], 'public':False}}
+    symbol = 'BTCUSD-PERP'
+    numconts = 1
 
+    leverage = 0
+    traderBalance = 0
+    orderMargin = 0
+    positionMargin = 0
+    contractValue = 0
+    dgtxUsdRate = 0
     current_cellprice = 0       #   текущая тик-цена
     last_cellprice = 0          #   прошлая тик-цена
     current_maxbid = 0          #   текущая нижняя граница стакана цен
@@ -132,16 +130,33 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.setupui(self)
         self.show()
 
-        # создание потока, в котором происходит подключение к вебсокету, обработка приходящих сообщений и запись их
-        # в переменную channels
+        self.sendq = queue.Queue()
+
         self.dxthread = WSThread(self)
         self.dxthread.daemon = True
         self.dxthread.start()
-        # создание потока, который читает данные из переменной channels и обрабатывает их
-        self.worker = Worker(self)
-        self.worker.daemon = True
-        self.worker.start()
-        # создание потока, который получает данные TraderStatus
+
+        self.senderq = Sender(self.sendq, self.dxthread)
+        self.senderq.daemon = True
+        self.senderq.start()
+
+        self.listf = {'orderbook_1':{'q':queue.LifoQueue(), 'f':self.message_orderbook_1},
+                      'index':{'q':queue.LifoQueue(), 'f':self.message_index},
+                      'ticker':{'q':queue.LifoQueue(), 'f':self.message_ticker},
+                      'tradingStatus': {'q': queue.Queue(), 'f': self.message_tradingStatus},
+                      'orderStatus': {'q': queue.Queue(), 'f': self.message_orderStatus},
+                      'orderFilled': {'q': queue.Queue(), 'f': self.message_orderFilled},
+                      'orderCancelled': {'q': queue.Queue(), 'f': self.message_orderCancelled},
+                      'traderStatus': {'q': queue.Queue(), 'f': self.message_traderStatus},
+                      'leverage': {'q': queue.Queue(), 'f': self.message_leverage}}
+        self.listp = []
+        for ch in self.listf.keys():
+            p = Worker(self.listf[ch]['q'], self.listf[ch]['f'])
+            self.listp.append(p)
+            p.daemon = True
+            p.start()
+
+        # # создание потока, который получает данные TraderStatus
         self.traderStatus = TraderStatus(self)
         self.traderStatus.daemon = True
         self.traderStatus.start()
@@ -158,12 +173,20 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.flClosing = True
         if self.db.isOpen():
             self.db.close()
-        while self.animator.is_alive() or self.worker.is_alive() or self.intimer.is_alive() or self.traderStatus.is_alive():
-            pass
-
-
+        # for p in self.publicp:
+        #     p.flClosing = True
+        # for p in self.privatp:
+        #     p.flClosing = True
+        # flAlive = True
+        # while flAlive:
+        #     flAlive = False
+        #     for p in self.publicp:
+        #         flAlive = flAlive or p.is_alive()
+        #     for p in self.privatp:
+        #         flAlive = flAlive or p.is_alive()
+        #     flAlive = flAlive or self.animator.is_alive()
     def returnid(self):
-        id = str(round(time.time() * 1000000))
+        id = str(round(time.time()) * 1000000 + random.randrange(1000000))
         return id
 
     def authuser(self):
@@ -218,12 +241,10 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     @pyqtSlot()
     def buttonex_clicked(self, name):
-        if name != self.cur_state['symbol']:
-            lastname = self.cur_state['symbol']
-            self.cur_state['symbol'] = name
-            self.exDist = ex[name]['TICK_SIZE']
-            self.dxthread.changeEx(name, lastname)
-
+        lastname = self.symbol
+        self.symbol = name
+        self.exDist = ex[name]['TICK_SIZE']
+        self.dxthread.changeEx(name, lastname)
 
     @pyqtSlot()
     def startbutton_clicked(self):
@@ -234,31 +255,31 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.last_cellprice = 0
             else:
                 self.startbutton.setText('СТАРТ')
-                self.dxthread.send_privat('cancelAllOrders', symbol=self.cur_state['symbol'])
+                self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
 
     @pyqtSlot()
     def buttonLeverage_clicked(self):
         if self.flConnect:
             rw = ChangeLeverage()
-            rw.setupUi(self.cur_state['leverage'])
-            rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.cur_state['symbol'], leverage=int(rw.lineedit_leverage.text())))
+            rw.setupUi(self.leverage)
+            rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.symbol, leverage=int(rw.lineedit_leverage.text())))
             rw.exec_()
 
     def update_cur_state(self, data):
-        self.cur_state['traderBalance'] = data['traderBalance']
+        self.traderBalance = data['traderBalance']
         self.l_balance_dgtx.setText(str(data['traderBalance']))
-        self.l_balance_usd.setText(str(round(data['traderBalance'] * self.cur_state['dgtxUsdRate'], 2)))
+        self.l_balance_usd.setText(str(round(data['traderBalance'] * self.dgtxUsdRate, 2)))
 
-        self.cur_state['leverage'] = data['leverage']
+        self.leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
 
-        self.cur_state['orderMargin'] = data['orderMargin']
+        self.orderMargin = data['orderMargin']
         self.l_margin_order.setText(str(data['orderMargin']))
-        self.cur_state['positionMargin'] = data['positionMargin']
+        self.positionMargin = data['positionMargin']
         self.l_margin_contr.setText(str(data['positionMargin']))
         available = round(data['traderBalance'] - data['orderMargin'] - data['positionMargin'], 4)
         self.l_available_dgtx.setText(str(available))
-        self.l_available_usd.setText(str(round(available * self.cur_state['dgtxUsdRate'], 2)))
+        self.l_available_usd.setText(str(round(available * self.dgtxUsdRate, 2)))
 
     def changemarketsituation(self):
         if self.current_cellprice != 0:
@@ -275,14 +296,14 @@ class MainWindow(QMainWindow, UiMainWindow):
                 bonddist = min(bonddist, MAXORDERDIST)
                 bondmod = self.tm_sell.item(int(bonddist), 1).data(Qt.DisplayRole)
                 if spotmod * bondmod != 0:
-                    distlist[price] = int(self.cur_state['numconts'] * spotmod * bondmod)
-
+                    distlist[price] = int(self.numconts * spotmod * bondmod)
 
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
+        self.lock.acquire()
         for order in self.listOrders:
             if order.status == ACTIVE:
                 if order.px not in distlist.keys():
-                    self.dxthread.send_privat('cancelOrder', symbol=self.cur_state['symbol'],
+                    self.dxthread.send_privat('cancelOrder', symbol=self.symbol,
                                                             clOrdId=order.clOrdId)
                     order.status = CLOSING
         # автоматически открываем ордеры
@@ -297,7 +318,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                     id = self.returnid()
                     self.dxthread.send_privat('placeOrder',
                                               clOrdId=id,
-                                              symbol=self.cur_state['symbol'],
+                                              symbol=self.symbol,
                                               ordType='LIMIT',
                                               timeInForce='GTC',
                                               side=side,
@@ -310,10 +331,11 @@ class MainWindow(QMainWindow, UiMainWindow):
                         orderType='LIMIT',
                         px=dist,
                         qty=distlist[dist],
-                        leverage=self.cur_state['leverage'],
+                        leverage=self.leverage,
                         paidPx=0,
                         type=AUTO,
                         status=OPENING))
+        self.lock.release()
     # ========== обработчик респонсов ============
     def message_response(self, id, status):
         pass
@@ -337,8 +359,8 @@ class MainWindow(QMainWindow, UiMainWindow):
         pass
 
     def message_ticker(self, data):
-        self.cur_state['dgtxUsdRate'] = data['dgtxUsdRate']
-        self.cur_state['contractValue'] = data['contractValue']
+        self.dgtxUsdRate = data['dgtxUsdRate']
+        self.contractValue = data['contractValue']
 
     def message_fundingInfo(self, data):
         pass
@@ -363,7 +385,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             # завершаем открытые контракты
             for cont in self.listContracts:
                 if cont.status == ACTIVE:
-                    self.dxthread.send_privat('closeContract', symbol=self.cur_state['symbol'],
+                    self.dxthread.send_privat('closeContract', symbol=self.symbol,
                                               contractId=cont.contractId, ordType='MARKET')
                     cont.status = CLOSING
 
@@ -373,17 +395,16 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.buttonLeverage.setEnabled(status)
         self.startbutton.setEnabled(status)
         if status:
-            self.statusbar.showMessage('Торговля разрешена')
             self.buttonAK.setStyleSheet("color:rgb(32, 192, 32);font: bold 11px; border: none;")
-            self.buttonAK.setText('верный api key')
-            if self.flConnect:
-                self.dxthread.send_privat('getTraderStatus', symbol=self.cur_state['symbol'])
+            self.buttonAK.setText('верный api key\nнажмите здесь для изменения')
+            self.flAuth = True
         else:
-            self.statusbar.showMessage('Торговля запрещена')
             self.buttonAK.setStyleSheet("color:rgb(192, 32, 32);font: bold 11px; border: none;")
             self.buttonAK.setText('не верный api key\nнажмите здесь для изменения')
+            self.flAuth = False
 
     def message_orderStatus(self, data):
+        self.lock.acquire()
         self.update_cur_state(data)
         # если приходит сообщение о подтвержденном ордере
         if data['orderStatus'] == 'ACCEPTED':
@@ -405,11 +426,12 @@ class MainWindow(QMainWindow, UiMainWindow):
                                              paidPx = data['paidPx'],
                                              type = OUTSIDE,
                                              status=ACTIVE))
+        self.lock.release()
 
     def message_orderFilled(self, data):
+        self.lock.acquire()
         self.update_cur_state(data)
-        self.pnl = data['pnl']
-        self.lastpnl = self.pnl
+        self.lastpnl = self.pnl = data['pnl']
 
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
@@ -418,9 +440,11 @@ class MainWindow(QMainWindow, UiMainWindow):
             for order in lo:
                 if order.origClOrdId == orderidtoremove:
                     self.listOrders.remove(order)
+            self.lock.release()
         # создаем контракты
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
+        self.lock.acquire()
         for cont in listnewcontids:
             self.listContracts.append(Contract(contractId=cont['contractId'],
                                                origContractId=cont['origContractId'],
@@ -429,9 +453,11 @@ class MainWindow(QMainWindow, UiMainWindow):
         for cont in lc:
             if cont.origContractId in listcontidtoclose:
                 self.listContracts.remove(cont)
+        self.lock.release()
 
     def message_orderCancelled(self, data):
-        self.cur_state['orderMargin'] = data['orderMargin']
+        self.lock.acquire()
+        self.orderMargin = data['orderMargin']
         # если статус отмена
         if data['orderStatus'] == 'CANCELLED':
             listtoremove = [x['origClOrdId'] for x in data['orders']]
@@ -439,6 +465,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             for order in lo:
                 if order.origClOrdId in listtoremove:
                     self.listOrders.remove(order)
+        self.lock.release()
 
     def message_condOrderStatus(self, data):
         pass
@@ -447,6 +474,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         pass
 
     def message_traderStatus(self, data):
+        self.lock.acquire()
         self.pnl = data['pnl']
         self.l_pnl.setText(str(data['pnl']))
         self.deltapnl = self.pnl - self.lastpnl
@@ -456,10 +484,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.upnl = data['upnl']
         self.l_upnl.setText(str(data['upnl']))
         self.update_cur_state(data)
+        self.lock.release()
 
     def message_leverage(self, data):
-        self.cur_state['leverage'] = data['leverage']
+        self.lock.acquire()
+        self.leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
+        self.lock.release()
 
     def message_funding(self, data):
         pass
