@@ -13,22 +13,18 @@ class WSThread(Thread):
 
     def run(self) -> None:
         def on_open(wsapp):
-            print('open')
             self.pc.flConnect = True
             self.pc.statusbar.showMessage('Есть соединение с сервером')
             self.pc.buttonBTC.clicked.emit()
             self.pc.pb_numcont_1.clicked.emit()
             if self.pc.flAuth:
-                print('аутент')
                 self.pc.authser()
 
         def on_close(wsapp):
-            print('close')
             self.pc.flConnect = False
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
         def on_error(wsapp, error):
-            print(error)
             self.pc.statusbar.showMessage(error)
 
         def on_message(wssapp, message):
@@ -40,8 +36,8 @@ class WSThread(Thread):
                 ch = self.message.get('ch')
                 if ch:
                     self.pc.listf[ch]['q'].put(self.message.get('data'))
-                elif id:
-                    print(self.message)
+                # elif id:
+                #     print(self.message)
 
         while True:
             try:
@@ -89,7 +85,6 @@ class Sender(Thread):
         while True:
             time.sleep(0.1)
             data = self.q.get()
-            print(data)
             try:
                 self.th.wsapp.send(data)
             except:
