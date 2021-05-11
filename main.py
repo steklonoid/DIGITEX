@@ -76,7 +76,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     pnl = 0                     #   текущий pnl
     lastpnl = 0                 #   прошлый pnl
     upnl = 0                    #   текущий upnl
-    pnltimer = time.time()      #   время, прошедшее с момента изменения pnl
     deltapnl = 0                #   последнее изменение pnl
 
     spotPx = 0                  #   текущая spot-цена
@@ -90,7 +89,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     flConnect = False           #   флаг нормального соединения с сайтом
     flAuth = False              #   флаг авторизации на сайте (введения правильного API KEY)
     flAutoLiq = False           #   флаг разрешенного авторазмещения ордеров (нажатия кнопки СТАРТ)
-    flClosing = False           #   флаг закрытия программы
 
     hscale = 50                 #   горизонтальный масштаб графика пикселов / сек
     vscale = 20                 #   вертикальный масштаб графика пикселов / ячейка TICK_SIZE
@@ -170,21 +168,14 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.animator.start()
 
     def closeEvent(self, *args, **kwargs):
-        self.flClosing = True
         if self.db.isOpen():
             self.db.close()
-        # for p in self.publicp:
-        #     p.flClosing = True
-        # for p in self.privatp:
-        #     p.flClosing = True
-        # flAlive = True
-        # while flAlive:
-        #     flAlive = False
-        #     for p in self.publicp:
-        #         flAlive = flAlive or p.is_alive()
-        #     for p in self.privatp:
-        #         flAlive = flAlive or p.is_alive()
-        #     flAlive = flAlive or self.animator.is_alive()
+        self.traderStatus.flClosing = True
+        self.intimer.flClosing = True
+        self.animator.flClosing = True
+        while self.traderStatus.is_alive() or self.intimer.is_alive() or self.animator.is_alive():
+            pass
+
     def returnid(self):
         id = str(round(time.time()) * 1000000 + random.randrange(1000000))
         return id
@@ -253,8 +244,11 @@ class MainWindow(QMainWindow, UiMainWindow):
             if self.flAutoLiq:
                 self.startbutton.setText('СТОП')
                 self.last_cellprice = 0
+                self.intimer.pnlStartTime = self.intimer.workingStartTime = time.time()
+                self.intimer.flWorking = True
             else:
                 self.startbutton.setText('СТАРТ')
+                self.intimer.flWorking = False
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
 
     @pyqtSlot()
@@ -480,7 +474,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.deltapnl = self.pnl - self.lastpnl
         self.lastpnl = self.pnl
         if self.deltapnl > 0:
-            self.pnltimer = time.time()
+            self.intimer.pnlStartTime = time.time()
         self.upnl = data['upnl']
         self.l_upnl.setText(str(data['upnl']))
         self.update_cur_state(data)

@@ -2,6 +2,7 @@ from threading import Thread, Lock
 import websocket
 import json
 import time
+import datetime
 
 class WSThread(Thread):
     methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6,
@@ -95,9 +96,10 @@ class TraderStatus(Thread):
         super(TraderStatus, self).__init__()
         self.pc = pc
         self.timer = 1
+        self.flClosing = False
 
     def run(self) -> None:
-        while not self.pc.flClosing:
+        while not self.flClosing:
             time.sleep(self.timer)
             if self.pc.flConnect and self.pc.flAuth:
                 self.pc.dxthread.send_privat('getTraderStatus', symbol=self.pc.symbol)
@@ -106,23 +108,30 @@ class InTimer(Thread):
     def __init__(self, pc):
         super(InTimer, self).__init__()
         self.pc = pc
-        self.timer = 0.1
+        self.delay = 0.1
+        self.pnlStartTime = 0
+        self.workingStartTime = 0
+        self.flWorking = False
+        self.flClosing = False
 
     def run(self) -> None:
-        while not self.pc.flClosing:
-            time.sleep(self.timer)
-            if self.pc.flAutoLiq:
-                self.pc.l_intimer.setText(str(round(time.time() - self.pc.pnltimer, 1)))
+        while not self.flClosing:
+            time.sleep(self.delay)
+            if self.flWorking:
+                self.pc.l_pnltimer.setText(str(round(time.time() - self.pnlStartTime, 1)))
+                self.pc.l_worktimer.setText(str(datetime.timedelta(seconds=round(time.time() - self.workingStartTime))))
             else:
-                self.pc.l_intimer.setText('0.0')
+                self.pc.l_pnltimer.setText('0.0')
+                self.pc.l_worktimer.setText('0.0')
 
 class Animator(Thread):
     def __init__(self, pc):
         super(Animator, self).__init__()
         self.pc = pc
         self.timer = 1/25
+        self.flClosing = False
 
     def run(self) -> None:
-        while not self.pc.flClosing:
+        while not self.flClosing:
             time.sleep(self.timer)
             self.pc.graphicsview.update()
