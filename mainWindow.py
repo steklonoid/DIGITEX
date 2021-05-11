@@ -107,7 +107,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Liquminer v1.3.3")
+        mainwindow.setWindowTitle("Digitex Liquminer v1.3.4")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -247,12 +247,7 @@ class UiMainWindow(object):
 # ------>
 
 # ------>
-        self.ll_pnltimer = QLabel('Время c прошлого начисления:')
-        self.ll_pnltimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.infogridlayout.addWidget(self.ll_pnltimer, 4, 0, 1, 1)
-        self.l_pnltimer = QLabel()
-        self.l_pnltimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 24px")
-        self.infogridlayout.addWidget(self.l_pnltimer, 4, 1, 1, 1)
+
 # ------>
         self.splitterh.addWidget(self.infogridlayoutwidget)
         self.splitterh.setSizes([300, 300])
@@ -308,6 +303,7 @@ class UiMainWindow(object):
         self.gb_auto.setTitle('Автомат')
         self.gl_auto = QGridLayout()
         self.gb_auto.setLayout(self.gl_auto)
+        self.bottom_hspacer.addWidget(self.gb_auto)
 
         self.l_leverage = QLabel('Плечо:')
         self.l_leverage.setStyleSheet("color:rgb(0, 0, 32); font: bold 16px")
@@ -319,7 +315,7 @@ class UiMainWindow(object):
         self.buttonLeverage.setCursor(Qt.PointingHandCursor)
         self.buttonLeverage.clicked.connect(self.buttonLeverage_clicked)
         self.buttonLeverage.setEnabled(False)
-        self.gl_auto.addWidget(self.buttonLeverage, 0, 1, 1, 1)
+        self.gl_auto.addWidget(self.buttonLeverage, 0, 1, 1, 5)
 
         self.gl_auto.addWidget(QLabel('К-во контр.'), 1, 0, 1, 1)
         self.numcont_spacer_widget = QWidget()
@@ -354,21 +350,41 @@ class UiMainWindow(object):
         self.pb_numcont_50.clicked.connect(numcont_choose)
         self.numcontbuttonlist.append(self.pb_numcont_50)
         self.numcont_spacer.addWidget(self.pb_numcont_50)
-        self.gl_auto.addWidget(self.numcont_spacer_widget, 1, 1, 1, 1)
+        self.gl_auto.addWidget(self.numcont_spacer_widget, 1, 1, 1, 5)
         # кнопка старт
         self.startbutton = QPushButton()
         self.startbutton.setText('СТАРТ')
         self.startbutton.setEnabled(False)
         self.startbutton.clicked.connect(self.startbutton_clicked)
-        self.gl_auto.addWidget(self.startbutton, 3, 0, 1, 2)
-        self.bottom_hspacer.addWidget(self.gb_auto)
+        self.gl_auto.addWidget(self.startbutton, 3, 0, 1, 4)
         # таймеры
         self.ll_worktimer = QLabel('Время работы:')
         self.ll_worktimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_auto.addWidget(self.ll_worktimer, 4, 0, 1, 1)
-        self.l_worktimer = QLabel()
+        self.gl_auto.addWidget(self.ll_worktimer, 3, 4, 1, 1)
+        self.l_worktimer = QLabel('0')
         self.l_worktimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 24px")
-        self.gl_auto.addWidget(self.l_worktimer, 4, 1, 1, 1)
+        self.gl_auto.addWidget(self.l_worktimer, 3, 5, 1, 1)
+
+        self.ll_pnltimer = QLabel('Время c прошлой выплаты:')
+        self.ll_pnltimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
+        self.gl_auto.addWidget(self.ll_pnltimer, 4, 0, 1, 1)
+        self.l_pnltimer = QLabel('0')
+        self.l_pnltimer.setStyleSheet("color:rgb(0, 0, 32); font: bold 24px")
+        self.gl_auto.addWidget(self.l_pnltimer, 4, 1, 1, 1)
+
+        self.ll_fundingcount = QLabel('Выплат:')
+        self.ll_fundingcount.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
+        self.gl_auto.addWidget(self.ll_fundingcount, 4, 2, 1, 1)
+        self.l_fundingcount = QLabel('0')
+        self.l_fundingcount.setStyleSheet("color:rgb(0, 0, 32); font: bold 24px")
+        self.gl_auto.addWidget(self.l_fundingcount, 4, 3, 1, 1)
+        self.ll_mineddgtx = QLabel('Добыто:')
+        self.ll_mineddgtx.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
+        self.gl_auto.addWidget(self.ll_mineddgtx, 4, 4, 1, 1)
+        self.l_mineddgtx = QLabel('0')
+        self.l_mineddgtx.setStyleSheet("color:rgb(0, 0, 32); font: bold 24px")
+        self.gl_auto.addWidget(self.l_mineddgtx, 4, 5, 1, 1)
+
 
         self.splitterv.addWidget(self.bottom_hspacer_widget)
         self.splitterv.setSizes([200, 100])

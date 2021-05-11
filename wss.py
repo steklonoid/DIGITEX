@@ -3,6 +3,7 @@ import websocket
 import json
 import time
 import datetime
+import logging
 
 class WSThread(Thread):
     methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6,
@@ -11,9 +12,12 @@ class WSThread(Thread):
     def __init__(self, pc):
         super(WSThread, self).__init__()
         self.pc = pc
+        self.flClosing = False
+        logging.basicConfig(filename='info.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
     def run(self) -> None:
         def on_open(wsapp):
+            logging.info('open')
             self.pc.flConnect = True
             self.pc.statusbar.showMessage('Есть соединение с сервером')
             self.pc.buttonBTC.clicked.emit()
@@ -22,10 +26,12 @@ class WSThread(Thread):
                 self.pc.authser()
 
         def on_close(wsapp):
+            logging.info('close')
             self.pc.flConnect = False
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
         def on_error(wsapp, error):
+            logging.info(error)
             self.pc.statusbar.showMessage(error)
 
         def on_message(wssapp, message):
@@ -37,10 +43,10 @@ class WSThread(Thread):
                 ch = self.message.get('ch')
                 if ch:
                     self.pc.listf[ch]['q'].put(self.message.get('data'))
-                # elif id:
-                #     print(self.message)
+                elif id:
+                    logging.info(self.message)
 
-        while True:
+        while not self.flClosing:
             try:
                 self.wsapp = websocket.WebSocketApp("wss://ws.mapi.digitexfutures.com", on_open=on_open,
                                                     on_close=on_close, on_error=on_error, on_message=on_message)
@@ -50,8 +56,8 @@ class WSThread(Thread):
                 pass
 
     def changeEx(self, name, lastname):
-        self.send_public('unsubscribe', lastname + '@index', lastname + '@trades', lastname + '@ticker', lastname + '@orderbook_1')
-        self.send_public('subscribe', name + '@index', name + '@trades', name + '@ticker', name + '@orderbook_1')
+        self.send_public('unsubscribe', lastname + '@index', lastname + '@ticker', lastname + '@orderbook_1')
+        self.send_public('subscribe', name + '@index', name + '@ticker', name + '@orderbook_1')
 
     def send_public(self, method, *params):
         pd = {'id':self.methods.get(method), 'method':method}
@@ -65,6 +71,7 @@ class WSThread(Thread):
         strpar = json.dumps(pd)
         self.pc.sendq.put(strpar)
 
+
 class Worker(Thread):
     def __init__(self, q, f):
         super(Worker, self).__init__()
@@ -76,14 +83,15 @@ class Worker(Thread):
             data = self.q.get()
             self.f(data)
 
-class Sender(Thread):
+class Senderq(Thread):
     def __init__(self, q, th):
-        super(Sender, self).__init__()
+        super(Senderq, self).__init__()
         self.q = q
         self.th = th
+        self.flClosing = False
 
     def run(self) -> None:
-        while True:
+        while not self.flClosing:
             time.sleep(0.1)
             data = self.q.get()
             try:
@@ -120,9 +128,6 @@ class InTimer(Thread):
             if self.flWorking:
                 self.pc.l_pnltimer.setText(str(round(time.time() - self.pnlStartTime, 1)))
                 self.pc.l_worktimer.setText(str(datetime.timedelta(seconds=round(time.time() - self.workingStartTime))))
-            else:
-                self.pc.l_pnltimer.setText('0.0')
-                self.pc.l_worktimer.setText('0.0')
 
 class Animator(Thread):
     def __init__(self, pc):
