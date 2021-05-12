@@ -29,7 +29,7 @@ CLOSING = 2
 MAXORDERDIST = 5
 NUMTICKS = 512
 
-ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':0.25, 'TICK_VALUE':0.25}}
+ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':1, 'TICK_VALUE':1}}
 
 class Order():
     def __init__(self, **kwargs):
@@ -73,10 +73,13 @@ class MainWindow(QMainWindow, UiMainWindow):
     current_minask = 0          #   текущая верхняя граница стакана цен
     last_minask = 0             #   прошлая верхняя граница стакана цен
     pnl = 0                     #   текущий pnl
+    lastpnl = 0                 #   прошлый pnl
     upnl = 0                    #   текущий upnl
 
-    mineddgtx = 0               # добыто за текущую сессию
-    fundingcount = 0            # добыто за текущую сессию
+    fundingmined = 0               #   добыто за текущую сессию
+    fundingcount = 0            #   добыто за текущую сессию
+    contractcount = 0           #   сорвано ордеров за текущцю сессию
+    contractmined = 0             #   добыто на контрактах
 
     spotPx = 0                  #   текущая spot-цена
     exDist = 0                  #   TICK_SIZE для текущей валюты
@@ -252,8 +255,12 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.intimer.flWorking = True
                 self.fundingcount = 0
                 self.l_fundingcount.setText(str(self.fundingcount))
-                self.mineddgtx = 0
-                self.l_mineddgtx.setText(str(self.mineddgtx))
+                self.fundingmined = 0
+                self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
+                self.contractmined = 0
+                self.l_contractmined.setText(str(self.contractmined))
+                self.contractcount = 0
+                self.l_contractcount.setText(str(self.contractcount))
             else:
                 self.startbutton.setText('СТАРТ')
                 self.intimer.flWorking = False
@@ -282,7 +289,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         available = round(data['traderBalance'] - data['orderMargin'] - data['positionMargin'], 4)
         self.l_available_dgtx.setText(str(available))
         self.l_available_usd.setText(str(round(available * self.dgtxUsdRate, 2)))
-        self.pnl = data['pnl']
+        self.lastpnl = self.pnl = data['pnl']
         self.l_pnl.setText(str(self.pnl))
 
     def changemarketsituation(self):
@@ -303,7 +310,6 @@ class MainWindow(QMainWindow, UiMainWindow):
                     distlist[price] = int(self.numconts * spotmod * bondmod)
 
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
-        self.lock.acquire()
         for order in self.listOrders:
             if order.status == ACTIVE:
                 if order.px not in distlist.keys():
@@ -339,19 +345,20 @@ class MainWindow(QMainWindow, UiMainWindow):
                         paidPx=0,
                         type=AUTO,
                         status=OPENING))
-        self.lock.release()
     # ========== обработчик респонсов ============
     def message_response(self, id, status):
         pass
     # ========== обработчики сообщений ===========
     # ==== публичные сообщения
     def message_orderbook_1(self, data):
+        self.lock.acquire()
         self.current_maxbid = data.get('bids')[0][0]
         self.current_minask = data.get('asks')[0][0]
         if ((self.current_maxbid != self.last_maxbid) or (self.current_minask != self.last_minask)) and self.flConnect:
             self.changemarketsituation()
         self.last_maxbid = self.current_maxbid
         self.last_minask = self.current_minask
+        self.lock.release()
 
     def message_kline(self, data):
         pass
@@ -370,6 +377,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         pass
 
     def message_index(self, data):
+        self.lock.acquire()
         self.spotPx = data['spotPx']
         if self.tickCounter < NUMTICKS:
             self.listTick[self.tickCounter] = [data['ts'], self.spotPx]
@@ -380,6 +388,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.listTick = res
 
         self.tickCounter += 1
+        self.l_tickcount.setText(str(self.tickCounter))
         if self.flConnect:
             self.current_cellprice = math.floor(self.spotPx / self.exDist) * self.exDist
             if self.current_cellprice != self.last_cellprice:
@@ -392,6 +401,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                     self.dxthread.send_privat('closeContract', symbol=self.symbol,
                                               contractId=cont.contractId, ordType='MARKET')
                     cont.status = CLOSING
+        self.lock.release()
 
     # ==== приватные сообщения
     def message_tradingStatus(self, data):
@@ -434,7 +444,6 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.lock.acquire()
-        self.update_form(data)
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
             orderidtoremove = data['origClOrdId']
@@ -442,11 +451,11 @@ class MainWindow(QMainWindow, UiMainWindow):
             for order in lo:
                 if order.origClOrdId == orderidtoremove:
                     self.listOrders.remove(order)
-            self.lock.release()
         # создаем контракты
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
+        self.contractcount += len(listnewcontids)
+        self.l_contractcount.setText(str(self.contractcount))
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
-        self.lock.acquire()
         for cont in listnewcontids:
             self.listContracts.append(Contract(contractId=cont['contractId'],
                                                origContractId=cont['origContractId'],
@@ -455,6 +464,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         for cont in lc:
             if cont.origContractId in listcontidtoclose:
                 self.listContracts.remove(cont)
+        self.contractmined += data['pnl'] - self.pnl
+        self.l_contractmined.setText(str(round(self.contractmined, 2)))
+        self.update_form(data)
         self.lock.release()
 
     def message_orderCancelled(self, data):
@@ -489,8 +501,8 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_funding(self, data):
         self.fundingcount += 1
         self.l_fundingcount.setText(str(self.fundingcount))
-        self.mineddgtx += data['payout']
-        self.l_mineddgtx.setText(str(self.mineddgtx))
+        self.fundingmined += data['payout']
+        self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
         self.intimer.pnlStartTime = time.time()
 
     def message_position(self, data):
