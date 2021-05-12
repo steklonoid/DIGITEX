@@ -123,6 +123,7 @@ class InTimer(Thread):
         self.pc = pc
         self.delay = 0.1
         self.pnlStartTime = 0
+        self.pnlTime = 0
         self.workingStartTime = 0
         self.flWorking = False
         self.flClosing = False
@@ -131,7 +132,8 @@ class InTimer(Thread):
         while not self.flClosing:
             time.sleep(self.delay)
             if self.flWorking:
-                self.pc.l_pnltimer.setText(str(round(time.time() - self.pnlStartTime, 1)))
+                self.pnlTime = time.time() - self.pnlStartTime
+                self.pc.l_pnltimer.setText(str(round(self.pnlTime, 1)))
                 self.pc.l_worktimer.setText(str(datetime.timedelta(seconds=round(time.time() - self.workingStartTime))))
 
 

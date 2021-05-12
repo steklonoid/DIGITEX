@@ -249,11 +249,11 @@ class MainWindow(QMainWindow, UiMainWindow):
     def startbutton_clicked(self):
         if self.flConnect:
             self.flAutoLiq = not self.flAutoLiq
+            self.intimer.flWorking = self.flAutoLiq
             if self.flAutoLiq:
                 self.startbutton.setText('СТОП')
                 self.last_cellprice = 0
                 self.intimer.pnlStartTime = self.intimer.workingStartTime = time.time()
-                self.intimer.flWorking = True
                 self.fundingcount = 0
                 self.l_fundingcount.setText(str(self.fundingcount))
                 self.fundingmined = 0
@@ -263,14 +263,16 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.contractcount = 0
                 self.l_contractcount.setText(str(self.contractcount))
                 logging.info('-------------start session------------')
+                logging.info('Баланс: ' + self.l_balance_dgtx.text())
+                logging.info('------------------------------------')
             else:
                 self.startbutton.setText('СТАРТ')
-                self.intimer.flWorking = False
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
                 logging.info('------------------------------------')
                 logging.info('Время работы: '+self.l_worktimer.text())
                 logging.info('Добыто: ' + self.l_mineddgtx.text())
                 logging.info('Доход от контрактов: ' + self.l_contractmined.text())
+                logging.info('Баланс: ' + self.l_balance_dgtx.text())
                 logging.info('-------------end session------------')
 
 
@@ -326,33 +328,34 @@ class MainWindow(QMainWindow, UiMainWindow):
                     order.status = CLOSING
         # автоматически открываем ордеры
         if self.flAutoLiq and len(self.listContracts) == 0:
-            listorders = [x.px for x in self.listOrders]
-            for dist in distlist.keys():
-                if dist not in listorders:
-                    if dist < self.current_maxbid:
-                        side = 'BUY'
-                    else:
-                        side = 'SELL'
-                    id = self.returnid()
-                    self.dxthread.send_privat('placeOrder',
-                                              clOrdId=id,
-                                              symbol=self.symbol,
-                                              ordType='LIMIT',
-                                              timeInForce='GTC',
-                                              side=side,
-                                              px=dist,
-                                              qty=distlist[dist])
-                    self.listOrders.append(Order(
-                        clOrdId=id,
-                        origClOrdId=id,
-                        orderSide=side,
-                        orderType='LIMIT',
-                        px=dist,
-                        qty=distlist[dist],
-                        leverage=self.leverage,
-                        paidPx=0,
-                        type=AUTO,
-                        status=OPENING))
+            if self.cb_delayaftermined.checkState() == Qt.Unchecked or self.intimer.pnlTime > int(self.l_delayaftermined.text()):
+                listorders = [x.px for x in self.listOrders]
+                for dist in distlist.keys():
+                    if dist not in listorders:
+                        if dist < self.current_maxbid:
+                            side = 'BUY'
+                        else:
+                            side = 'SELL'
+                        id = self.returnid()
+                        self.dxthread.send_privat('placeOrder',
+                                                  clOrdId=id,
+                                                  symbol=self.symbol,
+                                                  ordType='LIMIT',
+                                                  timeInForce='GTC',
+                                                  side=side,
+                                                  px=dist,
+                                                  qty=distlist[dist])
+                        self.listOrders.append(Order(
+                            clOrdId=id,
+                            origClOrdId=id,
+                            orderSide=side,
+                            orderType='LIMIT',
+                            px=dist,
+                            qty=distlist[dist],
+                            leverage=self.leverage,
+                            paidPx=0,
+                            type=AUTO,
+                            status=OPENING))
     # ========== обработчик респонсов ============
     def message_response(self, id, status):
         pass
@@ -507,11 +510,17 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.lock.release()
 
     def message_funding(self, data):
+        self.lock.acquire()
         self.fundingcount += 1
         self.l_fundingcount.setText(str(self.fundingcount))
         self.fundingmined += data['payout']
         self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
         self.intimer.pnlStartTime = time.time()
+        if self.cb_delayaftermined.checkState() == Qt.Checked:
+            self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
+            self.dxthread.send_privat('getTraderStatus', symbol=self.symbol)
+
+        self.lock.release()
 
     def message_position(self, data):
         pass
