@@ -306,7 +306,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         if self.current_cellprice != 0:
             distlist = {}
             for spotdist in range(-MAXORDERDIST, MAXORDERDIST + 1):
-                spotmod = self.tm_buy.item(int(math.fabs(spotdist)), 1).data(Qt.DisplayRole)
                 price = self.current_cellprice + spotdist * self.exDist
                 if price < self.current_maxbid:
                     bonddist = (self.current_maxbid - price) // self.exDist
@@ -315,9 +314,20 @@ class MainWindow(QMainWindow, UiMainWindow):
                 else:
                     bonddist = 0
                 bonddist = min(bonddist, MAXORDERDIST)
-                bondmod = self.tm_sell.item(int(bonddist), 1).data(Qt.DisplayRole)
-                if spotmod * bondmod != 0:
-                    distlist[price] = int(self.numconts * spotmod * bondmod)
+                if bonddist == 0:
+                    bondmod = 0
+                elif bonddist == 1:
+                    bondmod = int(self.l_dist1.text())
+                elif bonddist == 2:
+                    bondmod = int(self.l_dist2.text())
+                elif bonddist == 3:
+                    bondmod = int(self.l_dist3.text())
+                elif bonddist == 4:
+                    bondmod = int(self.l_dist4.text())
+                elif bonddist == 5:
+                    bondmod = int(self.l_dist5.text())
+                if bondmod != 0:
+                    distlist[price] = int(self.l_numconts.text()) * bondmod
 
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
         for order in self.listOrders:
