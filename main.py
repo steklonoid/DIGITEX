@@ -3,6 +3,7 @@ import sys
 import os
 import time
 import queue
+import logging
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5.QtGui import QIcon
@@ -118,7 +119,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                 return False
 
         super().__init__()
-
+        logging.basicConfig(filename='info.log', level=logging.INFO, format='%(asctime)s %(message)s')
         #  подключаем базу SQLite
         self.db = QSqlDatabase.addDatabase("QSQLITE", 'maindb')
         if not opendb():
@@ -261,10 +262,17 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.l_contractmined.setText(str(self.contractmined))
                 self.contractcount = 0
                 self.l_contractcount.setText(str(self.contractcount))
+                logging.info('-------------start session------------')
             else:
                 self.startbutton.setText('СТАРТ')
                 self.intimer.flWorking = False
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
+                logging.info('------------------------------------')
+                logging.info('Время работы: '+self.l_worktimer.text())
+                logging.info('Добыто: ' + self.l_mineddgtx.text())
+                logging.info('Доход от контрактов: ' + self.l_contractmined.text())
+                logging.info('-------------end session------------')
+
 
     @pyqtSlot()
     def buttonLeverage_clicked(self):

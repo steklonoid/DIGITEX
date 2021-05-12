@@ -14,7 +14,6 @@ class WSThread(Thread):
         super(WSThread, self).__init__()
         self.pc = pc
         self.flClosing = False
-        logging.basicConfig(filename='info.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
     def run(self) -> None:
         def on_open(wsapp):
@@ -41,11 +40,13 @@ class WSThread(Thread):
             else:
                 self.message = json.loads(message)
                 id = self.message.get('id')
+                status = self.message.get('status')
                 ch = self.message.get('ch')
                 if ch:
                     self.pc.listf[ch]['q'].put(self.message.get('data'))
-                elif id:
-                    logging.info(self.message)
+                elif status:
+                    if status == 'error':
+                        logging.info(self.message)
 
         while not self.flClosing:
             try:
