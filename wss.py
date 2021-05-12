@@ -5,6 +5,7 @@ import time
 import datetime
 import logging
 
+
 class WSThread(Thread):
     methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6,
                'cancelAllOrders':7, 'placeCondOrder':8, 'cancelCondOrder':9, 'closeContract':10, 'closePosition':11,
@@ -83,6 +84,7 @@ class Worker(Thread):
             data = self.q.get()
             self.f(data)
 
+
 class Senderq(Thread):
     def __init__(self, q, th):
         super(Senderq, self).__init__()
@@ -99,6 +101,7 @@ class Senderq(Thread):
             except:
                 pass
 
+
 class TraderStatus(Thread):
     def __init__(self, pc):
         super(TraderStatus, self).__init__()
@@ -111,6 +114,7 @@ class TraderStatus(Thread):
             time.sleep(self.timer)
             if self.pc.flConnect and self.pc.flAuth:
                 self.pc.dxthread.send_privat('getTraderStatus', symbol=self.pc.symbol)
+
 
 class InTimer(Thread):
     def __init__(self, pc):
@@ -128,6 +132,7 @@ class InTimer(Thread):
             if self.flWorking:
                 self.pc.l_pnltimer.setText(str(round(time.time() - self.pnlStartTime, 1)))
                 self.pc.l_worktimer.setText(str(datetime.timedelta(seconds=round(time.time() - self.workingStartTime))))
+
 
 class Animator(Thread):
     def __init__(self, pc):
