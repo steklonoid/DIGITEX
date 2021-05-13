@@ -1,4 +1,4 @@
-from threading import Thread, Lock
+from threading import Thread
 import websocket
 import json
 import time
@@ -103,20 +103,6 @@ class Senderq(Thread):
                 pass
 
 
-class TraderStatus(Thread):
-    def __init__(self, pc):
-        super(TraderStatus, self).__init__()
-        self.pc = pc
-        self.timer = 1
-        self.flClosing = False
-
-    def run(self) -> None:
-        while not self.flClosing:
-            time.sleep(self.timer)
-            if self.pc.flConnect and self.pc.flAuth:
-                self.pc.dxthread.send_privat('getTraderStatus', symbol=self.pc.symbol)
-
-
 class InTimer(Thread):
     def __init__(self, pc):
         super(InTimer, self).__init__()
@@ -136,6 +122,19 @@ class InTimer(Thread):
                 self.pc.l_pnltimer.setText(str(round(self.pnlTime, 1)))
                 self.pc.l_worktimer.setText(str(datetime.timedelta(seconds=round(time.time() - self.workingStartTime))))
 
+
+class Analizator(Thread):
+
+    def __init__(self, f):
+        super(Analizator, self).__init__()
+        self.delay = 1
+        self.flClosing = False
+        self.f = f
+
+    def run(self) -> None:
+        while not self.flClosing:
+            time.sleep(self.delay)
+            self.f()
 
 class Animator(Thread):
     def __init__(self, pc):

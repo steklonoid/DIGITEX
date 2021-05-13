@@ -11,7 +11,7 @@ from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
-from wss import WSThread, Worker, Senderq, TraderStatus, InTimer, Animator
+from wss import WSThread, Worker, Senderq, InTimer, Animator, Analizator
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
@@ -28,7 +28,7 @@ ACTIVE = 1
 CLOSING = 2
 
 MAXORDERDIST = 5
-NUMTICKS = 512
+NUMTICKS = 128
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':1, 'TICK_VALUE':1}}
 
@@ -59,7 +59,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     psw = ''
 
     symbol = 'BTCUSD-PERP'
-    numconts = 1
 
     leverage = 0
     traderBalance = 0
@@ -83,11 +82,12 @@ class MainWindow(QMainWindow, UiMainWindow):
     contractmined = 0             #   добыто на контрактах
 
     spotPx = 0                  #   текущая spot-цена
+    lastSpotPx = 0
     exDist = 0                  #   TICK_SIZE для текущей валюты
 
     listOrders = []             #   список активных ордеров
     listContracts = []          #   список открытых контрактов
-    listTick = np.zeros((NUMTICKS, 2), dtype=float)          #   массив последних тиков
+    listTick = np.zeros((NUMTICKS, 3), dtype=float)          #   массив последних тиков
     tickCounter = 0             #   счетчик тиков
 
     flConnect = False           #   флаг нормального соединения с сайтом
@@ -173,6 +173,10 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.animator.daemon = True
         self.animator.start()
 
+        self.analizator = Analizator(self.midvol)
+        self.analizator.daemon = True
+        self.analizator.start()
+
     def closeEvent(self, *args, **kwargs):
         if self.db.isOpen():
             self.db.close()
@@ -207,6 +211,17 @@ class MainWindow(QMainWindow, UiMainWindow):
             ak = AES.new(key, AES.MODE_CFB, iv).decrypt(en_ak_byte[SALT_SIZE:]).decode('utf-8')
             if self.flConnect:
                 self.dxthread.send_privat('auth', type='token', value=ak)
+
+    def midvol(self):
+        if self.tickCounter > NUMTICKS:
+            self.lock.acquire()
+            ar = np.array(self.listTick)
+            self.lock.release()
+            val = round(np.mean(ar, axis=0)[2], 2)
+            npvar = round(np.var(ar, axis=0)[1], 3)
+            self.l_midvol.setText(str(val))
+            self.l_midvar.setText(str(npvar))
+
 
     @pyqtSlot()
     def buttonLogin_clicked(self):
@@ -288,17 +303,10 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.traderBalance = data['traderBalance']
         self.l_balance_dgtx.setText(str(data['traderBalance']))
         self.l_balance_usd.setText(str(round(data['traderBalance'] * self.dgtxUsdRate, 2)))
-
         self.leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
-
         self.orderMargin = data['orderMargin']
-        self.l_margin_order.setText(str(data['orderMargin']))
         self.positionMargin = data['positionMargin']
-        self.l_margin_contr.setText(str(data['positionMargin']))
-        available = round(data['traderBalance'] - data['orderMargin'] - data['positionMargin'], 4)
-        self.l_available_dgtx.setText(str(available))
-        self.l_available_usd.setText(str(round(available * self.dgtxUsdRate, 2)))
         self.lastpnl = self.pnl = data['pnl']
         self.l_pnl.setText(str(self.pnl))
 
@@ -401,11 +409,12 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.lock.acquire()
         self.spotPx = data['spotPx']
         if self.tickCounter < NUMTICKS:
-            self.listTick[self.tickCounter] = [data['ts'], self.spotPx]
+            if self.tickCounter > 1:
+                self.listTick[self.tickCounter] = [data['ts'], self.spotPx, np.absolute(self.spotPx - self.listTick[self.tickCounter - 1][1])]
         else:
             res = np.empty_like(self.listTick)
             res[:-1] = self.listTick[1:]
-            res[-1] = [data['ts'], self.spotPx]
+            res[-1] = [data['ts'], self.spotPx, np.absolute(self.spotPx - res[-2][1])]
             self.listTick = res
 
         self.tickCounter += 1
