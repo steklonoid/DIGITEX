@@ -95,6 +95,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     flConnect = False           #   флаг нормального соединения с сайтом
     flAuth = False              #   флаг авторизации на сайте (введения правильного API KEY)
     flAutoLiq = False           #   флаг разрешенного авторазмещения ордеров (нажатия кнопки СТАРТ)
+    flLimit = False
 
     hscale = 50                 #   горизонтальный масштаб графика пикселов / сек
     vscale = 20                 #   вертикальный масштаб графика пикселов / ячейка TICK_SIZE
@@ -211,7 +212,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.dxthread.send_privat('auth', type='token', value=ak)
 
     def midvol(self):
-        self.lock.acquire()
+        # self.lock.acquire()
         if self.tickCounter > NUMTICKS:
             self.lock.acquire()
             ar = np.array(self.listTick)
@@ -221,7 +222,11 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.midvol = val
             self.l_midvol.setText(str(val))
             self.l_midvar.setText(str(npvar))
-        self.lock.release()
+            if self.midvol > float(self.l_midvollimit.text()):
+                self.flLimit = True
+            else:
+                self.flLimit = False
+        # self.lock.release()
 
 
     @pyqtSlot()
@@ -350,7 +355,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                                                             clOrdId=order.clOrdId)
                     order.status = CLOSING
         # автоматически открываем ордеры
-        if self.flAutoLiq and len(self.listContracts) == 0:
+        if self.flAutoLiq and not self.flLimit and len(self.listContracts) == 0:
             if self.cb_delayaftermined.checkState() == Qt.Unchecked or self.intimer.pnlTime > int(self.l_delayaftermined.text()):
                 listorders = [x.px for x in self.listOrders]
                 for dist in distlist.keys():

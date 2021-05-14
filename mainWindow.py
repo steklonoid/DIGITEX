@@ -76,6 +76,7 @@ class ChangeableLabel(QLabel):
                 self.setText(str(val + self.step))
             elif ev.button() == Qt.RightButton:
                 self.setText(str(max(val - self.step, 0)))
+        self.flMove = False
 
     def mouseMoveEvent(self, ev: QMouseEvent) -> None:
         self.flMove = True
@@ -104,7 +105,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Liquidity Miner v1.3.9")
+        mainwindow.setWindowTitle("Digitex Liquidity Miner v1.3.10")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
