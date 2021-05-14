@@ -74,7 +74,9 @@ class MainWindow(QMainWindow, UiMainWindow):
     last_minask = 0             #   прошлая верхняя граница стакана цен
     pnl = 0                     #   текущий pnl
     lastpnl = 0                 #   прошлый pnl
-    upnl = 0                    #   текущий upnl
+
+    losslimit = 0
+    midvol = 0
 
     fundingmined = 0               #   добыто за текущую сессию
     fundingcount = 0            #   добыто за текущую сессию
@@ -160,11 +162,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             p.daemon = True
             p.start()
 
-        # # создание потока, который получает данные TraderStatus
-        # self.traderStatus = TraderStatus(self)
-        # self.traderStatus.daemon = True
-        # self.traderStatus.start()
-
         self.intimer = InTimer(self)
         self.intimer.daemon = True
         self.intimer.start()
@@ -184,8 +181,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.animator.flClosing = True
         self.senderq.flClosing = True
         self.dxthread.flClosing = True
+        self.analizator.flClosing = True
         self.dxthread.wsapp.close()
-        while self.intimer.is_alive() or self.animator.is_alive() or self.dxthread.is_alive():
+        while self.intimer.is_alive() or self.animator.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
             pass
 
     def returnid(self):
@@ -213,14 +211,17 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.dxthread.send_privat('auth', type='token', value=ak)
 
     def midvol(self):
+        self.lock.acquire()
         if self.tickCounter > NUMTICKS:
             self.lock.acquire()
             ar = np.array(self.listTick)
             self.lock.release()
             val = round(np.mean(ar, axis=0)[2], 2)
             npvar = round(np.var(ar, axis=0)[1], 3)
+            self.midvol = val
             self.l_midvol.setText(str(val))
             self.l_midvar.setText(str(npvar))
+        self.lock.release()
 
 
     @pyqtSlot()
@@ -309,6 +310,10 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.positionMargin = data['positionMargin']
         self.lastpnl = self.pnl = data['pnl']
         self.l_pnl.setText(str(self.pnl))
+        sumb = int(self.l_losslimit_b.text())
+        sump = data['traderBalance'] - (data['traderBalance'] * int(self.l_losslimit_p.text())) / 100
+        sums = data['traderBalance'] - int(self.l_losslimit_s.text())
+        self.losslimit = max(sumb, sump, sums)
 
     def changemarketsituation(self):
         if self.current_cellprice != 0:
@@ -483,9 +488,10 @@ class MainWindow(QMainWindow, UiMainWindow):
                     self.listOrders.remove(order)
         # создаем контракты
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
-        self.contractcount += len(listnewcontids)
-        self.l_contractcount.setText(str(self.contractcount))
+        self.l_contractcount.setText(str(int(self.l_contractcount.text()) + len(listnewcontids)))
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
+        sumfund = sum([x['fundingVolume'] for x in data['contracts'] if x['qty'] == 0])
+        self.l_contractmined.setText(str(float(self.l_contractmined.text()) + sumfund))
         for cont in listnewcontids:
             self.listContracts.append(Contract(contractId=cont['contractId'],
                                                origContractId=cont['origContractId'],
