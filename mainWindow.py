@@ -68,14 +68,17 @@ class ChangeableLabel(QLabel):
 
     def mouseReleaseEvent(self, ev: QMouseEvent) -> None:
         if not self.flMove:
-            if self.integ:
-                val = int(self.text())
-            else:
-                val = float(self.text())
             if ev.button() == Qt.LeftButton:
-                self.setText(str(val + self.step))
+                if self.integ:
+                    val = int(self.text()) + self.step
+                else:
+                    val = round(float(self.text()) + self.step, 2)
             elif ev.button() == Qt.RightButton:
-                self.setText(str(max(val - self.step, 0)))
+                if self.integ:
+                    val = int(self.text()) - self.step
+                else:
+                    val = round(float(self.text()) - self.step, 2)
+            self.setText(str(val))
         self.flMove = False
 
     def mouseMoveEvent(self, ev: QMouseEvent) -> None:
@@ -319,43 +322,35 @@ class UiMainWindow(object):
         self.ll_losslimit = QLabel('Ограничение потерь: ')
         self.ll_losslimit.setStyleSheet("color:rgb(0, 0, 32); font: bold 16px")
         self.gl_miningcontrol.addWidget(self.ll_losslimit, 3, 0, 1, 1)
+        self.cb_losslimit = QCheckBox()
+        self.gl_miningcontrol.addWidget(self.cb_losslimit, 3, 1, 1, 1)
         self.ll_losslimit_b = QLabel('балансом')
         self.ll_losslimit_b.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_miningcontrol.addWidget(self.ll_losslimit_b, 3, 1, 1, 1)
+        self.gl_miningcontrol.addWidget(self.ll_losslimit_b, 3, 2, 1, 1)
         self.l_losslimit_b = ChangeableLabel('0')
-        self.gl_miningcontrol.addWidget(self.l_losslimit_b, 3, 2, 1, 1)
-        self.ll_losslimit_p = QLabel('процентом')
-        self.ll_losslimit_p.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_miningcontrol.addWidget(self.ll_losslimit_p, 3, 3, 1, 1)
-        self.l_losslimit_p = ChangeableLabel('10')
-        self.gl_miningcontrol.addWidget(self.l_losslimit_p, 3, 4, 1, 1)
+        self.gl_miningcontrol.addWidget(self.l_losslimit_b, 3, 3, 1, 1)
         self.ll_losslimit_s = QLabel('суммой')
         self.ll_losslimit_s.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_miningcontrol.addWidget(self.ll_losslimit_s, 3, 5, 1, 1)
+        self.gl_miningcontrol.addWidget(self.ll_losslimit_s, 3, 4, 1, 1)
         self.l_losslimit_s = ChangeableLabel('100')
-        self.gl_miningcontrol.addWidget(self.l_losslimit_s, 3, 6, 1, 1)
-
-        self.ll_currentlosslimit = QLabel('Текущий лимит:')
-        self.ll_currentlosslimit.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_miningcontrol.addWidget(self.ll_currentlosslimit, 4, 1, 1, 1)
-        self.l_currentlosslimit = QLabel('0')
-        self.l_currentlosslimit.setStyleSheet("color:rgb(192, 0, 32); font: bold 22px")
-        self.gl_miningcontrol.addWidget(self.l_currentlosslimit, 4, 2, 1, 1)
+        self.gl_miningcontrol.addWidget(self.l_losslimit_s, 3, 5, 1, 1)
 
         self.ll_midvollimit = QLabel('Ограничение по волатильности:')
         self.ll_midvollimit.setStyleSheet("color:rgb(0, 0, 32); font: bold 16px")
-        self.gl_miningcontrol.addWidget(self.ll_midvollimit, 5, 0, 1, 3)
+        self.gl_miningcontrol.addWidget(self.ll_midvollimit, 4, 0, 1, 3)
+        self.cb_midvollimit = QCheckBox()
+        self.gl_miningcontrol.addWidget(self.cb_midvollimit, 4, 3, 1, 1)
         self.l_midvollimit = ChangeableLabel('0.5')
         self.l_midvollimit.step = 0.01
         self.l_midvollimit.integ = False
-        self.gl_miningcontrol.addWidget(self.l_midvollimit, 5, 3, 1, 1)
+        self.gl_miningcontrol.addWidget(self.l_midvollimit, 4, 4, 1, 1)
 
         # кнопка старт
         self.startbutton = QPushButton()
         self.startbutton.setText('СТАРТ')
         self.startbutton.setEnabled(False)
         self.startbutton.clicked.connect(self.startbutton_clicked)
-        self.gl_miningcontrol.addWidget(self.startbutton, 6, 0, 1, 6)
+        self.gl_miningcontrol.addWidget(self.startbutton, 5, 0, 1, 6)
 
 
         self.splitterv.addWidget(self.bottom_hspacer_widget)

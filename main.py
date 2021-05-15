@@ -62,8 +62,6 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     leverage = 0
     traderBalance = 0
-    orderMargin = 0
-    positionMargin = 0
     contractValue = 0
     dgtxUsdRate = 0
     current_cellprice = 0       #   текущая тик-цена
@@ -73,15 +71,12 @@ class MainWindow(QMainWindow, UiMainWindow):
     current_minask = 0          #   текущая верхняя граница стакана цен
     last_minask = 0             #   прошлая верхняя граница стакана цен
     pnl = 0                     #   текущий pnl
-    lastpnl = 0                 #   прошлый pnl
 
     losslimit = 0
     midvol = 0
 
     fundingmined = 0               #   добыто за текущую сессию
     fundingcount = 0            #   добыто за текущую сессию
-    contractcount = 0           #   сорвано ордеров за текущцю сессию
-    contractmined = 0             #   добыто на контрактах
 
     spotPx = 0                  #   текущая spot-цена
     lastSpotPx = 0
@@ -155,7 +150,8 @@ class MainWindow(QMainWindow, UiMainWindow):
                       'contractClosed': {'q': queue.Queue(), 'f': self.message_contractClosed},
                       'traderStatus': {'q': queue.Queue(), 'f': self.message_traderStatus},
                       'leverage': {'q': queue.Queue(), 'f': self.message_leverage},
-                      'funding': {'q': queue.Queue(), 'f': self.message_funding}}
+                      'funding': {'q': queue.Queue(), 'f': self.message_funding},
+                      'position': {'q': queue.Queue(), 'f': self.message_position}}
         self.listp = []
         for ch in self.listf.keys():
             p = Worker(self.listf[ch]['q'], self.listf[ch]['f'])
@@ -279,10 +275,8 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.l_fundingcount.setText(str(self.fundingcount))
                 self.fundingmined = 0
                 self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
-                self.contractmined = 0
-                self.l_contractmined.setText(str(self.contractmined))
-                self.contractcount = 0
-                self.l_contractcount.setText(str(self.contractcount))
+                self.l_contractmined.setText('0')
+                self.l_contractcount.setText('0')
                 logging.info('-------------start session------------')
                 logging.info('Баланс: ' + self.l_balance_dgtx.text())
                 logging.info('------------------------------------')
@@ -311,14 +305,10 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_balance_usd.setText(str(round(data['traderBalance'] * self.dgtxUsdRate, 2)))
         self.leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
-        self.orderMargin = data['orderMargin']
-        self.positionMargin = data['positionMargin']
-        self.lastpnl = self.pnl = data['pnl']
-        self.l_pnl.setText(str(self.pnl))
+        self.l_pnl.setText(str(data['pnl']))
         sumb = int(self.l_losslimit_b.text())
-        sump = data['traderBalance'] - (data['traderBalance'] * int(self.l_losslimit_p.text())) / 100
         sums = data['traderBalance'] - int(self.l_losslimit_s.text())
-        self.losslimit = max(sumb, sump, sums)
+        self.losslimit = max(sumb, sums)
 
     def changemarketsituation(self):
         if self.current_cellprice != 0:
@@ -484,6 +474,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.lock.acquire()
+        self.l_contractmined.setText(str(round(float(self.l_contractmined.text()) + data['pnl'] - self.pnl, 4)))
+        self.pnl = data['pnl']
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
             orderidtoremove = data['origClOrdId']
@@ -495,8 +487,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
         self.l_contractcount.setText(str(int(self.l_contractcount.text()) + len(listnewcontids)))
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
-        sumfund = sum([x['fundingVolume'] for x in data['contracts'] if x['qty'] == 0])
-        self.l_contractmined.setText(str(float(self.l_contractmined.text()) + sumfund))
         for cont in listnewcontids:
             self.listContracts.append(Contract(contractId=cont['contractId'],
                                                origContractId=cont['origContractId'],
@@ -505,14 +495,11 @@ class MainWindow(QMainWindow, UiMainWindow):
         for cont in lc:
             if cont.origContractId in listcontidtoclose:
                 self.listContracts.remove(cont)
-        self.contractmined += data['pnl'] - self.pnl
-        self.l_contractmined.setText(str(round(self.contractmined, 2)))
         self.update_form(data)
         self.lock.release()
 
     def message_orderCancelled(self, data):
         self.lock.acquire()
-        self.orderMargin = data['orderMargin']
         # если статус отмена
         if data['orderStatus'] == 'CANCELLED':
             listtoremove = [x['origClOrdId'] for x in data['orders']]
@@ -544,16 +531,16 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.fundingcount += 1
         self.l_fundingcount.setText(str(self.fundingcount))
         self.fundingmined += data['payout']
+        self.pnl = data['pnl']
         self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
         self.intimer.pnlStartTime = time.time()
         if self.cb_delayaftermined.checkState() == Qt.Checked:
             self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
             self.dxthread.send_privat('getTraderStatus', symbol=self.symbol)
-
         self.lock.release()
 
     def message_position(self, data):
-        pass
+        print(data)
 
 app = QApplication([])
 win = MainWindow()
