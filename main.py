@@ -28,7 +28,8 @@ ACTIVE = 1
 CLOSING = 2
 
 MAXORDERDIST = 5
-NUMTICKS = 128
+NUMTICKS = 16
+# NUMTICKSHISTORY = 108000
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':1, 'TICK_VALUE':1}}
 
@@ -70,7 +71,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     last_maxbid = 0             #   прошлая нижняя граница стакана цен
     current_minask = 0          #   текущая верхняя граница стакана цен
     last_minask = 0             #   прошлая верхняя граница стакана цен
-    pnl = 0                     #   текущий pnl
 
     losslimit = 0
     midvol = 0
@@ -85,12 +85,14 @@ class MainWindow(QMainWindow, UiMainWindow):
     listOrders = []             #   список активных ордеров
     listContracts = []          #   список открытых контрактов
     listTick = np.zeros((NUMTICKS, 3), dtype=float)          #   массив последних тиков
+    # listhistory = np.zeros((NUMTICKSHISTORY, 2), dtype=float)
+    # flHistoryWroted = False
     tickCounter = 0             #   счетчик тиков
 
     flConnect = False           #   флаг нормального соединения с сайтом
     flAuth = False              #   флаг авторизации на сайте (введения правильного API KEY)
     flAutoLiq = False           #   флаг разрешенного авторазмещения ордеров (нажатия кнопки СТАРТ)
-    flLimit = False
+    flMidvolLimit = False
 
     hscale = 50                 #   горизонтальный масштаб графика пикселов / сек
     vscale = 20                 #   вертикальный масштаб графика пикселов / ячейка TICK_SIZE
@@ -219,9 +221,9 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.l_midvol.setText(str(val))
             self.l_midvar.setText(str(npvar))
             if self.midvol > float(self.l_midvollimit.text()):
-                self.flLimit = True
+                self.flMidvolLimit = True
             else:
-                self.flLimit = False
+                self.flMidvolLimit = False
         # self.lock.release()
 
 
@@ -271,10 +273,8 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.startbutton.setText('СТОП')
                 self.last_cellprice = 0
                 self.intimer.pnlStartTime = self.intimer.workingStartTime = time.time()
-                self.fundingcount = 0
-                self.l_fundingcount.setText(str(self.fundingcount))
-                self.fundingmined = 0
-                self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
+                self.l_fundingcount.setText('0')
+                self.l_fundingmined.setText('0')
                 self.l_contractmined.setText('0')
                 self.l_contractcount.setText('0')
                 logging.info('-------------start session------------')
@@ -285,7 +285,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
                 logging.info('------------------------------------')
                 logging.info('Время работы: '+self.l_worktimer.text())
-                logging.info('Добыто: ' + self.l_mineddgtx.text())
+                logging.info('Добыто: ' + self.l_fundingmined.text())
                 logging.info('Доход от контрактов: ' + self.l_contractmined.text())
                 logging.info('Баланс: ' + self.l_balance_dgtx.text())
                 logging.info('-------------end session------------')
@@ -305,7 +305,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_balance_usd.setText(str(round(data['traderBalance'] * self.dgtxUsdRate, 2)))
         self.leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
-        self.l_pnl.setText(str(data['pnl']))
         sumb = int(self.l_losslimit_b.text())
         sums = data['traderBalance'] - int(self.l_losslimit_s.text())
         self.losslimit = max(sumb, sums)
@@ -345,7 +344,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                                                             clOrdId=order.clOrdId)
                     order.status = CLOSING
         # автоматически открываем ордеры
-        if self.flAutoLiq and not self.flLimit and len(self.listContracts) == 0:
+        if self.flAutoLiq and not self.flMidvolLimit and len(self.listContracts) == 0:
             if self.cb_delayaftermined.checkState() == Qt.Unchecked or self.intimer.pnlTime > int(self.l_delayaftermined.text()):
                 listorders = [x.px for x in self.listOrders]
                 for dist in distlist.keys():
@@ -408,6 +407,13 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_index(self, data):
         self.lock.acquire()
         self.spotPx = data['spotPx']
+        # if not self.flHistoryWroted:
+        #     if self.tickCounter < NUMTICKSHISTORY:
+        #         self.listhistory[self.tickCounter] = [data['ts'], self.spotPx]
+        #     else:
+        #         np.savetxt('history.csv', self.listhistory, delimiter=',', fmt=['%d', '%16.4f'])
+        #         self.flHistoryWroted = True
+
         if self.tickCounter < NUMTICKS:
             if self.tickCounter > 1:
                 self.listTick[self.tickCounter] = [data['ts'], self.spotPx, np.absolute(self.spotPx - self.listTick[self.tickCounter - 1][1])]
@@ -474,8 +480,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.lock.acquire()
-        self.l_contractmined.setText(str(round(float(self.l_contractmined.text()) + data['pnl'] - self.pnl, 4)))
-        self.pnl = data['pnl']
+        self.l_contractmined.setText(str(round(float(self.l_contractmined.text()) + data['pnl'] - float(self.l_pnl.text()), 4)))
+        self.l_pnl.setText(str(data['pnl']))
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
             orderidtoremove = data['origClOrdId']
@@ -518,6 +524,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_traderStatus(self, data):
         self.lock.acquire()
         self.update_form(data)
+        self.l_pnl.setText(str(data['pnl']))
         self.lock.release()
 
     def message_leverage(self, data):
@@ -528,11 +535,10 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_funding(self, data):
         self.lock.acquire()
-        self.fundingcount += 1
-        self.l_fundingcount.setText(str(self.fundingcount))
-        self.fundingmined += data['payout']
-        self.pnl = data['pnl']
-        self.l_mineddgtx.setText(str(round(self.fundingmined, 2)))
+        self.l_fundingcount.setText(str(int(self.l_fundingcount.text()) + 1))
+        self.l_fundingmined.setText(str(round(float(self.l_fundingmined.text()) + data['payout'], 2)))
+        self.l_pnl.setText(str(data['pnl']))
+
         self.intimer.pnlStartTime = time.time()
         if self.cb_delayaftermined.checkState() == Qt.Checked:
             self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
