@@ -127,7 +127,7 @@ class Analizator(Thread):
 
     def __init__(self, f):
         super(Analizator, self).__init__()
-        self.delay = 1
+        self.delay = 0.5
         self.flClosing = False
         self.f = f
 

@@ -72,12 +72,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     current_minask = 0          #   текущая верхняя граница стакана цен
     last_minask = 0             #   прошлая верхняя граница стакана цен
 
-    losslimit = 0
-    midvol = 0
-
-    fundingmined = 0               #   добыто за текущую сессию
-    fundingcount = 0            #   добыто за текущую сессию
-
     spotPx = 0                  #   текущая spot-цена
     lastSpotPx = 0
     exDist = 0                  #   TICK_SIZE для текущей валюты
@@ -92,7 +86,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     flConnect = False           #   флаг нормального соединения с сайтом
     flAuth = False              #   флаг авторизации на сайте (введения правильного API KEY)
     flAutoLiq = False           #   флаг разрешенного авторазмещения ордеров (нажатия кнопки СТАРТ)
-    flMidvolLimit = False
 
     hscale = 50                 #   горизонтальный масштаб графика пикселов / сек
     vscale = 20                 #   вертикальный масштаб графика пикселов / ячейка TICK_SIZE
@@ -217,13 +210,8 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.lock.release()
             val = round(np.mean(ar, axis=0)[2], 2)
             npvar = round(np.var(ar, axis=0)[1], 3)
-            self.midvol = val
             self.l_midvol.setText(str(val))
             self.l_midvar.setText(str(npvar))
-            if self.midvol > float(self.l_midvollimit.text()):
-                self.flMidvolLimit = True
-            else:
-                self.flMidvolLimit = False
         # self.lock.release()
 
 
@@ -310,6 +298,21 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.losslimit = max(sumb, sums)
 
     def changemarketsituation(self):
+
+        def checkLimits():
+            if not self.flAutoLiq:
+                return False
+            if len(self.listContracts) != 0:
+                return False
+            if self.cb_delayaftermined.checkState() == Qt.Checked and self.intimer.pnlTime <= int(self.l_delayaftermined.text()):
+                return False
+            if self.cb_midvollimit.checkState() == Qt.Checked and float(self.l_midvol.text()) >= float(self.l_midvollimit.text()):
+                return False
+            if self.cb_losslimit.checkState() == Qt.Checked and float(self.l_balance_dgtx.text()) <= float(self.l_losslimit_b.text()):
+                return False
+            return True
+
+
         if self.current_cellprice != 0:
             distlist = {}
             for spotdist in range(-MAXORDERDIST, MAXORDERDIST + 1):
@@ -344,35 +347,34 @@ class MainWindow(QMainWindow, UiMainWindow):
                                                             clOrdId=order.clOrdId)
                     order.status = CLOSING
         # автоматически открываем ордеры
-        if self.flAutoLiq and not self.flMidvolLimit and len(self.listContracts) == 0:
-            if self.cb_delayaftermined.checkState() == Qt.Unchecked or self.intimer.pnlTime > int(self.l_delayaftermined.text()):
-                listorders = [x.px for x in self.listOrders]
-                for dist in distlist.keys():
-                    if dist not in listorders:
-                        if dist < self.current_maxbid:
-                            side = 'BUY'
-                        else:
-                            side = 'SELL'
-                        id = self.returnid()
-                        self.dxthread.send_privat('placeOrder',
-                                                  clOrdId=id,
-                                                  symbol=self.symbol,
-                                                  ordType='LIMIT',
-                                                  timeInForce='GTC',
-                                                  side=side,
-                                                  px=dist,
-                                                  qty=distlist[dist])
-                        self.listOrders.append(Order(
-                            clOrdId=id,
-                            origClOrdId=id,
-                            orderSide=side,
-                            orderType='LIMIT',
-                            px=dist,
-                            qty=distlist[dist],
-                            leverage=self.leverage,
-                            paidPx=0,
-                            type=AUTO,
-                            status=OPENING))
+        if checkLimits():
+            listorders = [x.px for x in self.listOrders]
+            for dist in distlist.keys():
+                if dist not in listorders:
+                    if dist < self.current_maxbid:
+                        side = 'BUY'
+                    else:
+                        side = 'SELL'
+                    id = self.returnid()
+                    self.dxthread.send_privat('placeOrder',
+                                              clOrdId=id,
+                                              symbol=self.symbol,
+                                              ordType='LIMIT',
+                                              timeInForce='GTC',
+                                              side=side,
+                                              px=dist,
+                                              qty=distlist[dist])
+                    self.listOrders.append(Order(
+                        clOrdId=id,
+                        origClOrdId=id,
+                        orderSide=side,
+                        orderType='LIMIT',
+                        px=dist,
+                        qty=distlist[dist],
+                        leverage=self.leverage,
+                        paidPx=0,
+                        type=AUTO,
+                        status=OPENING))
     # ========== обработчик респонсов ============
     def message_response(self, id, status):
         pass

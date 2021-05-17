@@ -57,7 +57,7 @@ class ChangeableLabel(QLabel):
     def __init__(self, *args, **kwargs):
         QLabel.__init__(self, *args, **kwargs)
         self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        self.setStyleSheet("color:rgb(0, 128\, 32); font: bold 24px;")
+        self.setStyleSheet("color:rgb(0, 128, 32); font: bold 24px;")
         self.step = 1
         self.lastx = 0
         self.flMove = False
@@ -328,12 +328,13 @@ class UiMainWindow(object):
         self.ll_losslimit_b.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
         self.gl_miningcontrol.addWidget(self.ll_losslimit_b, 3, 2, 1, 1)
         self.l_losslimit_b = ChangeableLabel('0')
+        self.l_losslimit_b.step = 10
         self.gl_miningcontrol.addWidget(self.l_losslimit_b, 3, 3, 1, 1)
-        self.ll_losslimit_s = QLabel('суммой')
-        self.ll_losslimit_s.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_miningcontrol.addWidget(self.ll_losslimit_s, 3, 4, 1, 1)
-        self.l_losslimit_s = ChangeableLabel('100')
-        self.gl_miningcontrol.addWidget(self.l_losslimit_s, 3, 5, 1, 1)
+        # self.ll_losslimit_s = QLabel('суммой')
+        # self.ll_losslimit_s.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
+        # self.gl_miningcontrol.addWidget(self.ll_losslimit_s, 3, 4, 1, 1)
+        # self.l_losslimit_s = ChangeableLabel('100')
+        # self.gl_miningcontrol.addWidget(self.l_losslimit_s, 3, 5, 1, 1)
 
         self.ll_midvollimit = QLabel('Ограничение по волатильности:')
         self.ll_midvollimit.setStyleSheet("color:rgb(0, 0, 32); font: bold 16px")
