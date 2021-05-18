@@ -326,15 +326,30 @@ class MainWindow(QMainWindow, UiMainWindow):
                 if bonddist == 0:
                     bondmod = 0
                 elif bonddist == 1:
-                    bondmod = int(self.l_dist1.text())
+                    if float(self.l_midvol.text()) < float(self.l_dist1.text()):
+                        bondmod = 1
+                    else:
+                        bondmod = 0
                 elif bonddist == 2:
-                    bondmod = int(self.l_dist2.text())
+                    if float(self.l_midvol.text()) < float(self.l_dist2.text()):
+                        bondmod = 1
+                    else:
+                        bondmod = 0
                 elif bonddist == 3:
-                    bondmod = int(self.l_dist3.text())
+                    if float(self.l_midvol.text()) < float(self.l_dist3.text()):
+                        bondmod = 1
+                    else:
+                        bondmod = 0
                 elif bonddist == 4:
-                    bondmod = int(self.l_dist4.text())
+                    if float(self.l_midvol.text()) < float(self.l_dist4.text()):
+                        bondmod = 1
+                    else:
+                        bondmod = 0
                 elif bonddist == 5:
-                    bondmod = int(self.l_dist5.text())
+                    if float(self.l_midvol.text()) < float(self.l_dist5.text()):
+                        bondmod = 1
+                    else:
+                        bondmod = 0
                 if bondmod != 0:
                     distlist[price] = int(self.l_numconts.text()) * bondmod
 

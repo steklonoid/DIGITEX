@@ -300,14 +300,24 @@ class UiMainWindow(object):
         self.bonddistwidget.setLayout(self.bonddisthlayout)
         self.ll_bonddist.setStyleSheet("color:rgb(0, 0, 32); font: bold 16px")
         self.l_dist1 = ChangeableLabel('0')
+        self.l_dist1.step = 0.01
+        self.l_dist1.integ = False
         self.bonddisthlayout.addWidget(self.l_dist1)
         self.l_dist2 = ChangeableLabel('0')
+        self.l_dist2.step = 0.01
+        self.l_dist2.integ = False
         self.bonddisthlayout.addWidget(self.l_dist2)
         self.l_dist3 = ChangeableLabel('0')
+        self.l_dist3.step = 0.01
+        self.l_dist3.integ = False
         self.bonddisthlayout.addWidget(self.l_dist3)
         self.l_dist4 = ChangeableLabel('0')
+        self.l_dist4.step = 0.01
+        self.l_dist4.integ = False
         self.bonddisthlayout.addWidget(self.l_dist4)
         self.l_dist5 = ChangeableLabel('0')
+        self.l_dist5.step = 0.01
+        self.l_dist5.integ = False
         self.bonddisthlayout.addWidget(self.l_dist5)
         self.gl_miningcontrol.addWidget(self.bonddistwidget, 1, 1, 1, 5)
         self.ll_delayaftermined = QLabel('Задержка после выплаты, сек:')
