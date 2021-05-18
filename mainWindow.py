@@ -108,7 +108,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Liquidity Miner v1.3.11")
+        mainwindow.setWindowTitle("Digitex Liquidity Miner v1.3.12")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")

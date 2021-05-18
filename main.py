@@ -75,6 +75,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     spotPx = 0                  #   текущая spot-цена
     lastSpotPx = 0
     exDist = 0                  #   TICK_SIZE для текущей валюты
+    maxBalance = 0
 
     listOrders = []             #   список активных ордеров
     listContracts = []          #   список открытых контрактов
@@ -289,13 +290,11 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def update_form(self, data):
         self.traderBalance = data['traderBalance']
+        self.maxBalance = max(self.maxBalance, self.traderBalance)
         self.l_balance_dgtx.setText(str(data['traderBalance']))
         self.l_balance_usd.setText(str(round(data['traderBalance'] * self.dgtxUsdRate, 2)))
         self.leverage = data['leverage']
         self.buttonLeverage.setText(str(data['leverage']) + ' x')
-        sumb = int(self.l_losslimit_b.text())
-        sums = data['traderBalance'] - int(self.l_losslimit_s.text())
-        self.losslimit = max(sumb, sums)
 
     def changemarketsituation(self):
 
