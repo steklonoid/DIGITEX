@@ -313,16 +313,25 @@ class MainWindow(QMainWindow, UiMainWindow):
 
 
         if self.current_cellprice != 0:
+            #   словарь разрешенных дистанций
             distlist = {}
+
             for spotdist in range(-MAXORDERDIST, MAXORDERDIST + 1):
                 price = self.current_cellprice + spotdist * self.exDist
-                if price < self.current_maxbid:
-                    bonddist = (self.current_maxbid - price) // self.exDist
-                elif price > self.current_minask:
-                    bonddist = (price - self.current_minask) // self.exDist
+                selldist = (price - self.current_maxbid) // self.exDist
+                buydist = (self.current_minask - price) // self.exDist
+                bonddist = min(max(0, selldist, buydist), MAXORDERDIST)
+                if selldist >= buydist:
+                    ordtype = 'SELL'
                 else:
-                    bonddist = 0
-                bonddist = min(bonddist, MAXORDERDIST)
+                    ordtype = 'BUY'
+                # if price < self.current_maxbid:
+                #     bonddist = (self.current_maxbid - price) // self.exDist
+                # elif price > self.current_minask:
+                #     bonddist = (price - self.current_minask) // self.exDist
+                # else:
+                #     bonddist = 0
+                # bonddist = min(bonddist, MAXORDERDIST)
                 if bonddist == 0:
                     bondmod = 0
                 elif bonddist == 1:
@@ -351,7 +360,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                     else:
                         bondmod = 0
                 if bondmod != 0:
-                    distlist[price] = int(self.l_numconts.text()) * bondmod
+                    distlist[price] = {'qty':int(self.l_numconts.text()) * bondmod, 'type':ordtype}
 
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
         for order in self.listOrders:
@@ -360,31 +369,35 @@ class MainWindow(QMainWindow, UiMainWindow):
                     self.dxthread.send_privat('cancelOrder', symbol=self.symbol,
                                                             clOrdId=order.clOrdId)
                     order.status = CLOSING
+                elif distlist[order.px]['type'] != order.orderSide:
+                    self.dxthread.send_privat('cancelOrder', symbol=self.symbol,
+                                              clOrdId=order.clOrdId)
+                    order.status = CLOSING
         # автоматически открываем ордеры
         if checkLimits():
             listorders = [x.px for x in self.listOrders]
             for dist in distlist.keys():
                 if dist not in listorders:
-                    if dist < self.current_maxbid:
-                        side = 'BUY'
-                    else:
-                        side = 'SELL'
+                    # if dist < self.current_maxbid:
+                    #     side = 'BUY'
+                    # else:
+                    #     side = 'SELL'
                     id = self.returnid()
                     self.dxthread.send_privat('placeOrder',
                                               clOrdId=id,
                                               symbol=self.symbol,
                                               ordType='LIMIT',
                                               timeInForce='GTC',
-                                              side=side,
+                                              side=distlist[dist]['type'],
                                               px=dist,
-                                              qty=distlist[dist])
+                                              qty=distlist[dist]['qty'])
                     self.listOrders.append(Order(
                         clOrdId=id,
                         origClOrdId=id,
-                        orderSide=side,
+                        orderSide=distlist[dist]['type'],
                         orderType='LIMIT',
                         px=dist,
-                        qty=distlist[dist],
+                        qty=distlist[dist]['qty'],
                         leverage=self.leverage,
                         paidPx=0,
                         type=AUTO,
