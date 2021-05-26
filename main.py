@@ -28,7 +28,7 @@ ACTIVE = 1
 CLOSING = 2
 
 MAXORDERDIST = 5
-NUMTICKS = 16
+NUMTICKS = 128
 # NUMTICKSHISTORY = 108000
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':1, 'TICK_VALUE':1}}
@@ -251,6 +251,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         lastname = self.symbol
         self.symbol = name
         self.exDist = ex[name]['TICK_SIZE']
+        self.tickCounter = 0
         self.dxthread.changeEx(name, lastname)
 
     @pyqtSlot()
