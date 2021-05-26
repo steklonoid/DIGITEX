@@ -1,11 +1,11 @@
 # модуль главного окна
-from PyQt5.QtCore import Qt, pyqtSlot, QRectF
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QOpenGLWidget, QSizePolicy, QGroupBox, QTableView, QAbstractItemView, QHeaderView, QCheckBox
-from PyQt5.QtGui import QIcon, QPainter, QStandardItemModel, QStandardItem, QPen, QColor, QFont, QPainterPath, QMouseEvent
-from OpenGL import GL
-import time
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QSizePolicy, QGroupBox, QCheckBox
+from PyQt5.QtGui import QIcon, QPainter, QPen, QColor, QFont, QMouseEvent
+#from OpenGL import GL
 
-class DisplayField(QOpenGLWidget):
+# class DisplayField(QOpenGLWidget):
+class DisplayField(QWidget):
     def __init__(self, pc):
         QWidget.__init__(self)
         self.pc = pc
@@ -18,17 +18,19 @@ class DisplayField(QOpenGLWidget):
         self.fontcurprice = QFont("Helvetica", 14, QFont.Bold)
         self.fontcellprice = QFont("Helvetica", 10, QFont.Bold)
 
-    def initializeGL(self) -> None:
-        GL.glClearColor(0, 0, 0, 1)
+    # def initializeGL(self) -> None:
+    #     GL.glClearColor(0, 0, 0, 1)
+    #
+    # def resizeGL(self, w: int, h: int) -> None:
+    #     GL.glLoadIdentity()
 
-    def resizeGL(self, w: int, h: int) -> None:
-        GL.glLoadIdentity()
-
-    def paintGL(self) -> None:
+    def paintEvent(self, event):
+    # def paintGL(self) -> None:
         painter = QPainter(self)
         width = painter.viewport().width() - self.rightaxe  # текущая ширина окна рисования
         height = painter.viewport().height()  # текущая высота окна рисования
-        painter.beginNativePainting()
+        painter.fillRect(0, 0, width, height, Qt.black)
+        # painter.beginNativePainting()
         # рисуем оси
         painter.setPen(QPen(Qt.white, 1))
         painter.drawLine(0, height - self.downaxe, width, height - self.downaxe)
@@ -51,7 +53,7 @@ class DisplayField(QOpenGLWidget):
         price0 = self.pc.current_cellprice - (n * self.pc.exDist // 2 )
         for i in range(n):
             painter.drawText(width + 5, i * self.pc.vscale, str(price0 + i * self.pc.exDist))
-        painter.endNativePainting()
+        # painter.endNativePainting()
 
 class ChangeableLabel(QLabel):
     def __init__(self, *args, **kwargs):
