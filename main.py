@@ -84,6 +84,7 @@ class MainWindow(QMainWindow, UiMainWindow):
     tickCounter = 0             #   счетчик тиков
     market_volatility = 0       #   текущая волатильность
     contractmined = 0
+    contractcount = 0
     pnl = 0
     fundingcount = 0
     fundingmined = 0
@@ -294,10 +295,10 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.startbutton.setText('СТОП')
                 self.last_cellprice = 0
                 self.intimer.pnlStartTime = self.intimer.workingStartTime = time.time()
-                self.l_fundingcount.setText('0')
-                self.l_fundingmined.setText('0')
-                self.l_contractmined.setText('0')
-                self.l_contractcount.setText('0')
+                self.fundingcount = 0
+                self.fundingmined = 0
+                self.contractmined = 0
+                self.contractcount = 0
                 logging.info('-------------start session------------')
                 logging.info('Баланс: ' + self.l_balance_dgtx.text())
                 logging.info('------------------------------------')
@@ -334,6 +335,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_midvol.setText(str(self.market_volatility))
         self.graphicsview.setText(str(self.spotPx))
         self.l_contractmined.setText(str(round(self.contractmined, 2)))
+        self.l_contractcount.setText(str(self.contractcount))
         self.l_pnl.setText(str(round(self.pnl, 2)))
         self.l_fundingcount.setText(str(self.fundingcount))
         self.l_fundingmined.setText(str(round(self.fundingmined, 2)))
@@ -516,7 +518,7 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.lock.acquire()
-        self.contractmined = self.contractmined + data['pnl'] - self.pnl
+        self.contractmined += (data['pnl'] - self.pnl)
         self.pnl = data['pnl']
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
@@ -527,7 +529,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                     self.listOrders.remove(order)
         # создаем контракты
         listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
-        self.l_contractcount.setText(str(int(self.l_contractcount.text()) + len(listnewcontids)))
+        self.contractcount += len(listnewcontids)
         listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
         for cont in listnewcontids:
             self.listContracts.append(Contract(contractId=cont['contractId'],
