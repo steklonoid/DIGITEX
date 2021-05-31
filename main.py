@@ -11,7 +11,7 @@ from PyQt5.QtCore import QSettings, pyqtSlot, Qt
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
 from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
-from wss import WSThread, Worker, Senderq, InTimer, Animator, Analizator
+from wss import WSThread, Worker, Senderq, InTimer, Analizator
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
 import math
@@ -63,6 +63,7 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     leverage = 0
     traderBalance = 0
+    traderBalance_usd = 0
     contractValue = 0
     dgtxUsdRate = 0
     current_cellprice = 0       #   текущая тик-цена
@@ -73,23 +74,23 @@ class MainWindow(QMainWindow, UiMainWindow):
     last_minask = 0             #   прошлая верхняя граница стакана цен
 
     spotPx = 0                  #   текущая spot-цена
-    lastSpotPx = 0
+    lastSpotPx = 0              #   прошлая spot-цена
     exDist = 0                  #   TICK_SIZE для текущей валюты
     maxBalance = 0
 
     listOrders = []             #   список активных ордеров
     listContracts = []          #   список открытых контрактов
     listTick = np.zeros((NUMTICKS, 3), dtype=float)          #   массив последних тиков
-    # listhistory = np.zeros((NUMTICKSHISTORY, 2), dtype=float)
-    # flHistoryWroted = False
     tickCounter = 0             #   счетчик тиков
+    market_volatility = 0       #   текущая волатильность
+    contractmined = 0
+    pnl = 0
+    fundingcount = 0
+    fundingmined = 0
 
     flConnect = False           #   флаг нормального соединения с сайтом
     flAuth = False              #   флаг авторизации на сайте (введения правильного API KEY)
     flAutoLiq = False           #   флаг разрешенного авторазмещения ордеров (нажатия кнопки СТАРТ)
-
-    hscale = 50                 #   горизонтальный масштаб графика пикселов / сек
-    vscale = 20                 #   вертикальный масштаб графика пикселов / ячейка TICK_SIZE
 
     def __init__(self):
 
@@ -136,9 +137,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.senderq.daemon = True
         self.senderq.start()
 
-        self.listf = {'orderbook_1':{'q':queue.LifoQueue(), 'f':self.message_orderbook_1},
-                      'index':{'q':queue.LifoQueue(), 'f':self.message_index},
-                      'ticker':{'q':queue.LifoQueue(), 'f':self.message_ticker},
+        self.listf = {'orderbook_1':{'q':queue.Queue(), 'f':self.message_orderbook_1},
+                      'index':{'q':queue.Queue(), 'f':self.message_index},
+                      'ticker':{'q':queue.Queue(), 'f':self.message_ticker},
                       'tradingStatus': {'q': queue.Queue(), 'f': self.message_tradingStatus},
                       'orderStatus': {'q': queue.Queue(), 'f': self.message_orderStatus},
                       'orderFilled': {'q': queue.Queue(), 'f': self.message_orderFilled},
@@ -159,10 +160,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.intimer.daemon = True
         self.intimer.start()
 
-        self.animator = Animator(self)
-        self.animator.daemon = True
-        self.animator.start()
-
         self.analizator = Analizator(self.midvol)
         self.analizator.daemon = True
         self.analizator.start()
@@ -171,12 +168,11 @@ class MainWindow(QMainWindow, UiMainWindow):
         if self.db.isOpen():
             self.db.close()
         self.intimer.flClosing = True
-        self.animator.flClosing = True
         self.senderq.flClosing = True
         self.dxthread.flClosing = True
         self.analizator.flClosing = True
         self.dxthread.wsapp.close()
-        while self.intimer.is_alive() or self.animator.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
+        while self.intimer.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
             pass
 
     def returnid(self):
@@ -204,17 +200,11 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.dxthread.send_privat('auth', type='token', value=ak)
 
     def midvol(self):
-        # self.lock.acquire()
         if self.tickCounter > NUMTICKS:
             self.lock.acquire()
             ar = np.array(self.listTick)
             self.lock.release()
-            val = round(np.mean(ar, axis=0)[2], 2)
-            npvar = round(np.var(ar, axis=0)[1], 3)
-            self.l_midvol.setText(str(val))
-            self.l_midvar.setText(str(npvar))
-        # self.lock.release()
-
+            self.market_volatility = round(np.mean(ar, axis=0)[2], 2)
 
     @pyqtSlot()
     def buttonLogin_clicked(self):
@@ -252,6 +242,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.symbol = name
         self.exDist = ex[name]['TICK_SIZE']
         self.tickCounter = 0
+        self.market_volatility = 0
         self.dxthread.changeEx(name, lastname)
 
     @pyqtSlot()
@@ -289,13 +280,23 @@ class MainWindow(QMainWindow, UiMainWindow):
             rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.symbol, leverage=int(rw.lineedit_leverage.text())))
             rw.exec_()
 
-    def update_form(self, data):
+    def fill_data(self, data):
         self.traderBalance = data['traderBalance']
         self.maxBalance = max(self.maxBalance, self.traderBalance)
-        self.l_balance_dgtx.setText(str(data['traderBalance']))
-        self.l_balance_usd.setText(str(round(data['traderBalance'] * self.dgtxUsdRate, 2)))
+        self.traderBalance_usd = data['traderBalance'] * self.dgtxUsdRate
         self.leverage = data['leverage']
-        self.buttonLeverage.setText(str(data['leverage']) + ' x')
+
+    def update_form(self):
+        self.l_balance_dgtx.setText(str(self.traderBalance))
+        self.l_balance_usd.setText(str(round(self.traderBalance_usd, 2)))
+        self.buttonLeverage.setText(str(self.leverage) + ' x')
+        self.l_tickcount.setText(str(self.tickCounter))
+        self.l_midvol.setText(str(self.market_volatility))
+        self.graphicsview.setText(str(self.spotPx))
+        self.l_contractmined.setText(str(round(self.contractmined, 2)))
+        self.l_pnl.setText(str(round(self.pnl, 2)))
+        self.l_fundingcount.setText(str(self.fundingcount))
+        self.l_fundingmined.setText(str(round(self.fundingmined, 2)))
 
     def changemarketsituation(self):
 
@@ -409,12 +410,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     def message_index(self, data):
         self.lock.acquire()
         self.spotPx = data['spotPx']
-        # if not self.flHistoryWroted:
-        #     if self.tickCounter < NUMTICKSHISTORY:
-        #         self.listhistory[self.tickCounter] = [data['ts'], self.spotPx]
-        #     else:
-        #         np.savetxt('history.csv', self.listhistory, delimiter=',', fmt=['%d', '%16.4f'])
-        #         self.flHistoryWroted = True
 
         if self.tickCounter < NUMTICKS:
             if self.tickCounter > 1:
@@ -426,7 +421,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.listTick = res
 
         self.tickCounter += 1
-        self.l_tickcount.setText(str(self.tickCounter))
         if self.flConnect:
             self.current_cellprice = math.floor(self.spotPx / self.exDist) * self.exDist
             if self.current_cellprice != self.last_cellprice:
@@ -457,7 +451,7 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderStatus(self, data):
         self.lock.acquire()
-        self.update_form(data)
+        self.fill_data(data)
         # если приходит сообщение о подтвержденном ордере
         if data['orderStatus'] == 'ACCEPTED':
             foundOrder = False
@@ -482,8 +476,8 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_orderFilled(self, data):
         self.lock.acquire()
-        self.l_contractmined.setText(str(round(float(self.l_contractmined.text()) + data['pnl'] - float(self.l_pnl.text()), 4)))
-        self.l_pnl.setText(str(data['pnl']))
+        self.contractmined = self.contractmined + data['pnl'] - self.pnl
+        self.pnl = data['pnl']
         # отменяем ордер
         if data['orderStatus'] == 'FILLED':
             orderidtoremove = data['origClOrdId']
@@ -503,7 +497,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         for cont in lc:
             if cont.origContractId in listcontidtoclose:
                 self.listContracts.remove(cont)
-        self.update_form(data)
+        self.fill_data(data)
         self.lock.release()
 
     def message_orderCancelled(self, data):
@@ -525,21 +519,20 @@ class MainWindow(QMainWindow, UiMainWindow):
 
     def message_traderStatus(self, data):
         self.lock.acquire()
-        self.update_form(data)
-        self.l_pnl.setText(str(data['pnl']))
+        self.fill_data(data)
+        self.pnl = data['pnl']
         self.lock.release()
 
     def message_leverage(self, data):
         self.lock.acquire()
         self.leverage = data['leverage']
-        self.buttonLeverage.setText(str(data['leverage']) + ' x')
         self.lock.release()
 
     def message_funding(self, data):
         self.lock.acquire()
-        self.l_fundingcount.setText(str(int(self.l_fundingcount.text()) + 1))
-        self.l_fundingmined.setText(str(round(float(self.l_fundingmined.text()) + data['payout'], 2)))
-        self.l_pnl.setText(str(data['pnl']))
+        self.fundingcount += 1
+        self.fundingmined += data['payout']
+        self.pnl = data['pnl']
 
         self.intimer.pnlStartTime = time.time()
         if self.cb_delayaftermined.checkState() == Qt.Checked:
@@ -548,7 +541,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.lock.release()
 
     def message_position(self, data):
-        print(data)
+        pass
 
 app = QApplication([])
 win = MainWindow()

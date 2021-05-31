@@ -1,63 +1,13 @@
 # модуль главного окна
-from PyQt5.QtCore import Qt, pyqtSlot, QRectF
-from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QOpenGLWidget, QSizePolicy, QGroupBox, QTableView, QAbstractItemView, QHeaderView, QCheckBox
-from PyQt5.QtGui import QIcon, QPainter, QStandardItemModel, QStandardItem, QPen, QColor, QFont, QPainterPath, QMouseEvent
-from OpenGL import GL
-import time
-
-class DisplayField(QOpenGLWidget):
-    def __init__(self, pc):
-        QWidget.__init__(self)
-        self.pc = pc
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setContentsMargins(0, 0, 0, 0)
-
-        self.downaxe = 20   # размер поля для отображения легенды нижней оси, px
-        self.rightaxe = 50  # размер поля для отображения легенды правой оси, px
-        self.upaxe = 20     # размер поля для отображения легенды верхней оси, px
-        self.fontcurprice = QFont("Helvetica", 14, QFont.Bold)
-        self.fontcellprice = QFont("Helvetica", 10, QFont.Bold)
-
-    def initializeGL(self) -> None:
-        GL.glClearColor(0, 0, 0, 1)
-
-    def resizeGL(self, w: int, h: int) -> None:
-        GL.glLoadIdentity()
-
-    def paintGL(self) -> None:
-        painter = QPainter(self)
-        width = painter.viewport().width() - self.rightaxe  # текущая ширина окна рисования
-        height = painter.viewport().height()  # текущая высота окна рисования
-        painter.beginNativePainting()
-        # рисуем оси
-        painter.setPen(QPen(Qt.white, 1))
-        painter.drawLine(0, height - self.downaxe, width, height - self.downaxe)
-        painter.drawLine(width, 0, width, height - self.downaxe)
-        n = width // (2 * self.pc.hscale)
-        for i in range(-n, n + 1):
-            painter.setPen(QPen(QColor(0, 96, 0), 1, Qt.DotLine))
-            x = width // 2 + self.pc.hscale * i
-            painter.drawLine(x, 0, x, height - self.downaxe)
-            painter.setPen(QPen(Qt.white, 1))
-            painter.drawText(x, height, str(i)+' с')
-        # выводим цену
-        painter.setPen(QPen(QColor(255, 255, 0), 1))
-        painter.setFont(self.fontcurprice)
-        painter.drawText(10, 20, str(round(self.pc.spotPx, 1)))
-        #   выводим справа ячейки с ценой
-        painter.setPen(QPen(Qt.white, 1))
-        painter.setFont(self.fontcellprice)
-        n = height // self.pc.vscale
-        price0 = self.pc.current_cellprice - (n * self.pc.exDist // 2 )
-        for i in range(n):
-            painter.drawText(width + 5, i * self.pc.vscale, str(price0 + i * self.pc.exDist))
-        painter.endNativePainting()
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QWidget, QGridLayout, QStatusBar, QHBoxLayout, QPushButton, QLabel, QSplitter, QGroupBox, QCheckBox
+from PyQt5.QtGui import QIcon, QMouseEvent
 
 class ChangeableLabel(QLabel):
     def __init__(self, *args, **kwargs):
         QLabel.__init__(self, *args, **kwargs)
         self.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        self.setStyleSheet("color:rgb(0, 128, 32); font: bold 24px;")
+        self.setStyleSheet("color:rgb(0, 128, 32); font: bold 18px;")
         self.step = 1
         self.lastx = 0
         self.flMove = False
@@ -108,7 +58,7 @@ class UiMainWindow(object):
 
         mainwindow.setObjectName("MainWindow")
         mainwindow.resize(1200, 800)
-        mainwindow.setWindowTitle("Digitex Liquidity Miner v1.3.13")
+        mainwindow.setWindowTitle("Digitex Liquidity Miner v1.3.14")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -169,7 +119,9 @@ class UiMainWindow(object):
         #   горизонтальный сплиттер, делящий остальное пространство внизу на две части
         self.splitterv = QSplitter(Qt.Vertical)
         self.splitterh = QSplitter(Qt.Horizontal)
-        self.graphicsview = DisplayField(mainwindow)
+        self.graphicsview = QLabel('0')
+        self.graphicsview.setStyleSheet("color:rgb(128, 128, 0); font: bold 32px; border: none")
+        self.graphicsview.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.splitterh.addWidget(self.graphicsview)
         self.gb_marketsituation = QGroupBox()
         self.gb_marketsituation.setTitle('Ситуация на рынке: ')
@@ -187,12 +139,6 @@ class UiMainWindow(object):
         self.l_midvol = QLabel('0')
         self.l_midvol.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
         self.gl_marketsituation.addWidget(self.l_midvol, 1, 1, 1, 1)
-        self.ll_midvar = QLabel('Дисперсия рынка:')
-        self.ll_midvar.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_marketsituation.addWidget(self.ll_midvar, 2, 0, 1, 1)
-        self.l_midvar = QLabel('0')
-        self.l_midvar.setStyleSheet("color:rgb(0, 0, 32); font: bold 12px")
-        self.gl_marketsituation.addWidget(self.l_midvar, 2, 1, 1, 1)
 
         self.splitterh.addWidget(self.gb_marketsituation)
         self.splitterh.setSizes([300, 300])

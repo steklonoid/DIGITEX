@@ -117,6 +117,7 @@ class InTimer(Thread):
     def run(self) -> None:
         while not self.flClosing:
             time.sleep(self.delay)
+            self.pc.update_form()
             if self.flWorking:
                 self.pnlTime = time.time() - self.pnlStartTime
                 self.pc.l_pnltimer.setText(str(round(self.pnlTime, 1)))
@@ -127,7 +128,7 @@ class Analizator(Thread):
 
     def __init__(self, f):
         super(Analizator, self).__init__()
-        self.delay = 0.5
+        self.delay = 1
         self.flClosing = False
         self.f = f
 
@@ -135,15 +136,3 @@ class Analizator(Thread):
         while not self.flClosing:
             time.sleep(self.delay)
             self.f()
-
-class Animator(Thread):
-    def __init__(self, pc):
-        super(Animator, self).__init__()
-        self.pc = pc
-        self.timer = 1/25
-        self.flClosing = False
-
-    def run(self) -> None:
-        while not self.flClosing:
-            time.sleep(self.timer)
-            self.pc.graphicsview.update()
