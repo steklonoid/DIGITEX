@@ -25,7 +25,7 @@ class WSThread(Thread):
                 self.pc.authser()
 
         def on_close(wsapp, close_status_code, close_msg):
-            logging.info('close / ' + close_status_code + ' / ' + close_msg)
+            logging.info('close / ' + str(close_status_code) + ' / ' + str(close_msg))
             self.pc.flConnect = False
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
