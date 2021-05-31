@@ -126,6 +126,34 @@ class MainWindow(QMainWindow, UiMainWindow):
         # создание визуальной формы
         self.setupui(self)
         self.show()
+        #   читаем настройки
+        s = self.settings.value("l_numconts")
+        if s:
+            self.l_numconts.setText(s)
+        s = self.settings.value("l_dist1")
+        if s:
+            self.l_dist1.setText(s)
+        s = self.settings.value("l_dist2")
+        if s:
+            self.l_dist2.setText(s)
+        s = self.settings.value("l_dist3")
+        if s:
+            self.l_dist3.setText(s)
+        s = self.settings.value("l_dist4")
+        if s:
+            self.l_dist4.setText(s)
+        s = self.settings.value("l_dist5")
+        if s:
+            self.l_dist5.setText(s)
+        s = self.settings.value("l_delayaftermined")
+        if s:
+            self.l_delayaftermined.setText(s)
+        s = self.settings.value("l_losslimit_b")
+        if s:
+            self.l_losslimit_b.setText(s)
+        s = self.settings.value("l_midvollimit")
+        if s:
+            self.l_midvollimit.setText(s)
 
         self.sendq = queue.Queue()
 
@@ -165,8 +193,20 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.analizator.start()
 
     def closeEvent(self, *args, **kwargs):
+        #   закрываем соединение с БД
         if self.db.isOpen():
             self.db.close()
+        #   сохраняем настройки
+        self.settings.setValue("l_numconts", self.l_numconts.text())
+        self.settings.setValue("l_dist1", self.l_dist1.text())
+        self.settings.setValue("l_dist2", self.l_dist2.text())
+        self.settings.setValue("l_dist3", self.l_dist3.text())
+        self.settings.setValue("l_dist4", self.l_dist4.text())
+        self.settings.setValue("l_dist5", self.l_dist5.text())
+        self.settings.setValue("l_delayaftermined", self.l_delayaftermined.text())
+        self.settings.setValue("l_losslimit_b", self.l_losslimit_b.text())
+        self.settings.setValue("l_midvollimit", self.l_midvollimit.text())
+        #   завершение работы потоков
         self.intimer.flClosing = True
         self.senderq.flClosing = True
         self.dxthread.flClosing = True
