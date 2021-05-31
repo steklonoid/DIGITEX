@@ -21,12 +21,11 @@ class WSThread(Thread):
             self.pc.flConnect = True
             self.pc.statusbar.showMessage('Есть соединение с сервером')
             self.pc.buttonBTC.clicked.emit()
-            self.pc.pb_numcont_1.clicked.emit()
             if self.pc.flAuth:
                 self.pc.authser()
 
-        def on_close(wsapp):
-            logging.info('close')
+        def on_close(wsapp, close_status_code, close_msg):
+            logging.info('close / ' + close_status_code + ' / ' + close_msg)
             self.pc.flConnect = False
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
