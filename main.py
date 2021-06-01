@@ -7,10 +7,10 @@ import logging
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QSettings, pyqtSlot, Qt
+from PyQt5.QtCore import QSettings, pyqtSlot
 from PyQt5.QtSql import QSqlDatabase, QSqlQuery
 from mainWindow import UiMainWindow
-from loginWindow import LoginWindow, RegisterWindow, ChangeLeverage
+from loginWindow import LoginWindow, RegisterWindow
 from wss import WSThread, Worker, Senderq, InTimer, Analizator
 import hashlib
 from Crypto.Cipher import AES # pip install pycryptodome
@@ -128,33 +128,15 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.setupui(self)
         self.show()
         #   читаем настройки
-        s = self.settings.value("l_numconts")
-        if s:
-            self.l_numconts.setText(s)
-        s = self.settings.value("l_dist1")
-        if s:
-            self.l_dist1.setText(s)
-        s = self.settings.value("l_dist2")
-        if s:
-            self.l_dist2.setText(s)
-        s = self.settings.value("l_dist3")
-        if s:
-            self.l_dist3.setText(s)
-        s = self.settings.value("l_dist4")
-        if s:
-            self.l_dist4.setText(s)
-        s = self.settings.value("l_dist5")
-        if s:
-            self.l_dist5.setText(s)
-        s = self.settings.value("l_delayaftermined")
-        if s:
-            self.l_delayaftermined.setText(s)
-        s = self.settings.value("l_losslimit_b")
-        if s:
-            self.l_losslimit_b.setText(s)
-        s = self.settings.value("l_midvollimit")
-        if s:
-            self.l_midvollimit.setText(s)
+        self.l_numconts = int(self.settings.value("l_numconts"))
+        self.l_dist1 = int(self.settings.value("l_dist1"))
+        self.l_dist2 = int(self.settings.value("l_dist2"))
+        self.l_dist3 = int(self.settings.value("l_dist3"))
+        self.l_dist4 = int(self.settings.value("l_dist4"))
+        self.l_dist5 = int(self.settings.value("l_dist5"))
+        self.l_delayaftermined = int(self.settings.value("l_delayaftermined"))
+        self.l_losslimit_b = int(self.settings.value("l_losslimit_b"))
+        self.l_midvollimit = float(self.settings.value("l_midvollimit"))
 
         self.sendq = queue.Queue()
 
@@ -194,19 +176,22 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.analizator.start()
 
     def closeEvent(self, *args, **kwargs):
+        if self.flAutoLiq:
+            self.startbutton.clicked.emit()
+            time.sleep(1)
         #   закрываем соединение с БД
         if self.db.isOpen():
             self.db.close()
         #   сохраняем настройки
-        self.settings.setValue("l_numconts", self.l_numconts.text())
-        self.settings.setValue("l_dist1", self.l_dist1.text())
-        self.settings.setValue("l_dist2", self.l_dist2.text())
-        self.settings.setValue("l_dist3", self.l_dist3.text())
-        self.settings.setValue("l_dist4", self.l_dist4.text())
-        self.settings.setValue("l_dist5", self.l_dist5.text())
-        self.settings.setValue("l_delayaftermined", self.l_delayaftermined.text())
-        self.settings.setValue("l_losslimit_b", self.l_losslimit_b.text())
-        self.settings.setValue("l_midvollimit", self.l_midvollimit.text())
+        self.settings.setValue("l_numconts", str(self.l_numconts))
+        self.settings.setValue("l_dist1", str(self.l_dist1))
+        self.settings.setValue("l_dist2", str(self.l_dist2))
+        self.settings.setValue("l_dist3", str(self.l_dist3))
+        self.settings.setValue("l_dist4", str(self.l_dist4))
+        self.settings.setValue("l_dist5", str(self.l_dist5))
+        self.settings.setValue("l_delayaftermined", str(self.l_delayaftermined))
+        self.settings.setValue("l_losslimit_b", str(self.l_losslimit_b))
+        self.settings.setValue("l_midvollimit", str(self.l_midvollimit))
         #   завершение работы потоков
         self.intimer.flClosing = True
         self.senderq.flClosing = True
@@ -300,45 +285,24 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.contractmined = 0
                 self.contractcount = 0
                 logging.info('-------------start session------------')
-                logging.info('Баланс: ' + self.l_balance_dgtx.text())
+                logging.info('Баланс: ' + str(self.traderBalance))
                 logging.info('------------------------------------')
             else:
                 self.startbutton.setText('СТАРТ')
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
+                self.dxthread.send_privat('closePosition', symbol=self.symbol, ordType='MARKET')
                 logging.info('------------------------------------')
-                logging.info('Время работы: '+self.l_worktimer.text())
-                logging.info('Добыто: ' + self.l_fundingmined.text())
-                logging.info('Доход от контрактов: ' + self.l_contractmined.text())
-                logging.info('Баланс: ' + self.l_balance_dgtx.text())
+                logging.info('Время работы: ')
+                logging.info('Добыто: ')
+                logging.info('Доход от контрактов: ')
+                logging.info('Баланс: ')
                 logging.info('-------------end session------------')
-
-
-    @pyqtSlot()
-    def buttonLeverage_clicked(self):
-        if self.flConnect:
-            rw = ChangeLeverage()
-            rw.setupUi(self.leverage)
-            rw.leveragechanged.connect(lambda: self.dxthread.send_privat('changeLeverageAll', symbol=self.symbol, leverage=int(rw.lineedit_leverage.text())))
-            rw.exec_()
 
     def fill_data(self, data):
         self.traderBalance = data['traderBalance']
         self.maxBalance = max(self.maxBalance, self.traderBalance)
         self.traderBalance_usd = data['traderBalance'] * self.dgtxUsdRate
         self.leverage = data['leverage']
-
-    def update_form(self):
-        self.l_balance_dgtx.setText(str(self.traderBalance))
-        self.l_balance_usd.setText(str(round(self.traderBalance_usd, 2)))
-        self.buttonLeverage.setText(str(self.leverage) + ' x')
-        self.l_tickcount.setText(str(self.tickCounter))
-        self.l_midvol.setText(str(self.market_volatility))
-        self.graphicsview.setText(str(self.spotPx))
-        self.l_contractmined.setText(str(round(self.contractmined, 2)))
-        self.l_contractcount.setText(str(self.contractcount))
-        self.l_pnl.setText(str(round(self.pnl, 2)))
-        self.l_fundingcount.setText(str(self.fundingcount))
-        self.l_fundingmined.setText(str(round(self.fundingmined, 2)))
 
     def changemarketsituation(self):
 
@@ -347,11 +311,11 @@ class MainWindow(QMainWindow, UiMainWindow):
                 return False
             if len(self.listContracts) != 0:
                 return False
-            if self.cb_delayaftermined.checkState() == Qt.Checked and self.intimer.pnlTime <= int(self.l_delayaftermined.text()):
+            if self.intimer.pnlTime <= self.l_delayaftermined:
                 return False
-            if self.cb_midvollimit.checkState() == Qt.Checked and float(self.l_midvol.text()) >= float(self.l_midvollimit.text()):
+            if self.market_volatility >= self.l_midvollimit:
                 return False
-            if self.cb_losslimit.checkState() == Qt.Checked and float(self.l_balance_dgtx.text()) <= float(self.l_losslimit_b.text()):
+            if self.traderBalance <= self.l_losslimit_b:
                 return False
             return True
 
@@ -370,17 +334,17 @@ class MainWindow(QMainWindow, UiMainWindow):
                 if bonddist == 0:
                     bondmod = 0
                 elif bonddist == 1:
-                    bondmod = int(self.l_dist1.text())
+                    bondmod = self.l_dist1
                 elif bonddist == 2:
-                    bondmod = int(self.l_dist2.text())
+                    bondmod = self.l_dist2
                 elif bonddist == 3:
-                    bondmod = int(self.l_dist3.text())
+                    bondmod = self.l_dist3
                 elif bonddist == 4:
-                    bondmod = int(self.l_dist4.text())
+                    bondmod = self.l_dist4
                 elif bonddist == 5:
-                    bondmod = int(self.l_dist5.text())
+                    bondmod = self.l_dist5
                 if bondmod != 0:
-                    distlist[price] = int(self.l_numconts.text()) * bondmod
+                    distlist[price] = self.l_numconts * bondmod
 
         # завершаем ордеры, которые находятся не в списке разрешенных дистанций
         for order in self.listOrders:
@@ -480,7 +444,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     # ==== приватные сообщения
     def message_tradingStatus(self, data):
         status = data.get('available')
-        self.buttonLeverage.setEnabled(status)
         self.startbutton.setEnabled(status)
         if status:
             self.buttonAK.setStyleSheet("color:rgb(32, 192, 32);font: bold 11px; border: none;")
@@ -577,9 +540,8 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.pnl = data['pnl']
 
         self.intimer.pnlStartTime = time.time()
-        if self.cb_delayaftermined.checkState() == Qt.Checked:
-            self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
-            self.dxthread.send_privat('getTraderStatus', symbol=self.symbol)
+        self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
+        self.dxthread.send_privat('getTraderStatus', symbol=self.symbol)
         self.lock.release()
 
     def message_position(self, data):

@@ -116,11 +116,8 @@ class InTimer(Thread):
     def run(self) -> None:
         while not self.flClosing:
             time.sleep(self.delay)
-            self.pc.update_form()
             if self.flWorking:
                 self.pnlTime = time.time() - self.pnlStartTime
-                self.pc.l_pnltimer.setText(str(round(self.pnlTime, 1)))
-                self.pc.l_worktimer.setText(str(datetime.timedelta(seconds=round(time.time() - self.workingStartTime))))
 
 
 class Analizator(Thread):
