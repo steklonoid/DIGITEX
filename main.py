@@ -58,7 +58,6 @@ class MainWindow(QMainWindow, UiMainWindow):
     user = ''
     psw = ''
 
-    symbol = 'BTCUSD-PERP'
     #   получаемые данные
     leverage = 0                #   текущее плечо
     traderBalance = 0           #   текущий баланс
@@ -129,6 +128,8 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.setupui(self)
         self.show()
         #   читаем настройки
+        self.symbol = self.settings.value("symbol")
+        self.exDist = ex[self.symbol]['TICK_SIZE']
         self.l_numconts = int(self.settings.value("l_numconts"))
         self.l_dist1 = int(self.settings.value("l_dist1"))
         self.l_dist2 = int(self.settings.value("l_dist2"))
@@ -185,6 +186,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         if self.db.isOpen():
             self.db.close()
         #   сохраняем настройки
+        self.settings.setValue("symbol", str(self.symbol))
         self.settings.setValue("l_numconts", str(self.l_numconts))
         self.settings.setValue("l_dist1", str(self.l_dist1))
         self.settings.setValue("l_dist2", str(self.l_dist2))
@@ -264,15 +266,6 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.buttonEnter.setText('вход выполнен: '+self.user)
         self.buttonEnter.setStyleSheet("color:rgb(32, 128, 32); font: bold 11px; border: none;")
         self.authuser()
-
-    @pyqtSlot()
-    def buttonex_clicked(self, name):
-        lastname = self.symbol
-        self.symbol = name
-        self.exDist = ex[name]['TICK_SIZE']
-        self.tickCounter = 0
-        self.market_volatility = 0
-        self.dxthread.changeEx(name, lastname)
 
     @pyqtSlot()
     def startbutton_clicked(self):

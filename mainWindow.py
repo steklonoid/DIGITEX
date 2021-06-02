@@ -9,17 +9,8 @@ class UiMainWindow(object):
         self.numcontbuttonlist = []
 
     def setupui(self, mainwindow):
-
-        def ex_choose():
-            mainwindow.buttonex_clicked(self.sender().objectName())
-            for b in self.buttonlist:
-                if b == self.sender():
-                    b.setIcon(QIcon("./images/buttononlineicon.png"))
-                else:
-                    b.setIcon(QIcon("./images/buttonofflineicon.png"))
-
         mainwindow.setObjectName("MainWindow")
-        mainwindow.setWindowTitle("DLM Bot v1.4.2")
+        mainwindow.setWindowTitle("DLM Bot v1.4.3")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -28,29 +19,6 @@ class UiMainWindow(object):
         self.gridLayout = QGridLayout(self.centralwidget)
         self.gridLayout.setContentsMargins(1, 1, 1, 1)
         self.gridLayout.setObjectName("gridLayout")
-
-        #   верхняя полоска инфопанель
-        self.hspacerwidgetinfo = QWidget()
-        self.hspacerwidgetinfo.setObjectName('hspacerwidgetinfo')
-        self.hspacerwidgetinfo.setMaximumHeight(50)
-        self.hspacerinfo = QHBoxLayout(self.hspacerwidgetinfo)
-        self.hspacerinfo.setContentsMargins(0, 0, 0, 0)
-        self.hspacerinfo.setObjectName('hspacermenu')
-        self.buttonBTC = QPushButton()
-        self.buttonBTC.setObjectName('BTCUSD-PERP')
-        self.buttonBTC.setText('BTC')
-        self.buttonBTC.setMinimumHeight(50)
-        self.buttonBTC.clicked.connect(ex_choose)
-        self.buttonlist.append(self.buttonBTC)
-        self.hspacerinfo.addWidget(self.buttonBTC)
-        self.buttonETH = QPushButton()
-        self.buttonETH.setObjectName('ETHUSD-PERP')
-        self.buttonETH.setText('ETH')
-        self.buttonETH.setMinimumHeight(50)
-        self.buttonETH.clicked.connect(ex_choose)
-        self.buttonlist.append(self.buttonETH)
-        self.hspacerinfo.addWidget(self.buttonETH)
-        self.gridLayout.addWidget(self.hspacerwidgetinfo, 0, 0, 1, 1)
         #   верхняя полоска вход не выполнен, аккаунт
         self.hspacerwidgetmenu = QWidget()
         self.hspacerwidgetmenu.setObjectName('hspacerwidgetmenu')
@@ -75,7 +43,7 @@ class UiMainWindow(object):
         self.buttonAK.setStyleSheet("color:rgb(128, 32, 32); font: bold 11px; border: none")
         self.buttonAK.clicked.connect(self.buttonAK_clicked)
         self.hspacermenu.addWidget(self.buttonAK)
-        self.gridLayout.addWidget(self.hspacerwidgetmenu, 0, 1, 1, 1)
+        self.gridLayout.addWidget(self.hspacerwidgetmenu, 0, 0, 1, 1)
 
         # кнопка старт
         self.startbutton = QPushButton()

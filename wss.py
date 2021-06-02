@@ -19,7 +19,7 @@ class WSThread(Thread):
             logging.info('open')
             self.pc.flConnect = True
             self.pc.statusbar.showMessage('Есть соединение с сервером')
-            self.pc.buttonBTC.clicked.emit()
+            self.changeEx(self.pc.symbol)
             if self.pc.flAuth:
                 self.pc.authser()
 
@@ -55,8 +55,7 @@ class WSThread(Thread):
             except:
                 pass
 
-    def changeEx(self, name, lastname):
-        self.send_public('unsubscribe', lastname + '@index', lastname + '@ticker', lastname + '@orderbook_1')
+    def changeEx(self, name):
         self.send_public('subscribe', name + '@index', name + '@ticker', name + '@orderbook_1')
 
     def send_public(self, method, *params):
