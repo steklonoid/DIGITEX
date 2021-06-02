@@ -19,7 +19,7 @@ class UiMainWindow(object):
                     b.setIcon(QIcon("./images/buttonofflineicon.png"))
 
         mainwindow.setObjectName("MainWindow")
-        mainwindow.setWindowTitle("DLM Bot v1.4.1")
+        mainwindow.setWindowTitle("DLM Bot v1.4.2")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")

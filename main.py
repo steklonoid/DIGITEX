@@ -29,7 +29,6 @@ CLOSING = 2
 
 MAXORDERDIST = 5
 NUMTICKS = 128
-# NUMTICKSHISTORY = 108000
 
 ex = {'BTCUSD-PERP':{'TICK_SIZE':5, 'TICK_VALUE':0.1},'ETHUSD-PERP':{'TICK_SIZE':1, 'TICK_VALUE':1}}
 
@@ -60,12 +59,12 @@ class MainWindow(QMainWindow, UiMainWindow):
     psw = ''
 
     symbol = 'BTCUSD-PERP'
-
-    leverage = 0
-    traderBalance = 0
-    traderBalance_usd = 0
-    contractValue = 0
-    dgtxUsdRate = 0
+    #   получаемые данные
+    leverage = 0                #   текущее плечо
+    traderBalance = 0           #   текущий баланс
+    traderBalance_usd = 0       #   текущий баланс в usd
+    contractValue = 0           #   величина контракта
+    dgtxUsdRate = 0             #   курс DGTX / USD
     current_cellprice = 0       #   текущая тик-цена
     last_cellprice = 0          #   прошлая тик-цена
     current_maxbid = 0          #   текущая нижняя граница стакана цен
@@ -76,18 +75,20 @@ class MainWindow(QMainWindow, UiMainWindow):
     spotPx = 0                  #   текущая spot-цена
     lastSpotPx = 0              #   прошлая spot-цена
     exDist = 0                  #   TICK_SIZE для текущей валюты
-    maxBalance = 0
+    maxBalance = 0              #   максимальный баланс за текущую сессию
 
     listOrders = []             #   список активных ордеров
     listContracts = []          #   список открытых контрактов
     listTick = np.zeros((NUMTICKS, 3), dtype=float)          #   массив последних тиков
     tickCounter = 0             #   счетчик тиков
     market_volatility = 0       #   текущая волатильность
-    contractmined = 0
-    contractcount = 0
-    pnl = 0
-    fundingcount = 0
-    fundingmined = 0
+    contractmined = 0           #   добыто на контрактах
+    contractcount = 0           #   количество сорванных контрактов
+    pnl = 0                     #   текущий PnL
+    fundingcount = 0            #   выплат за текущую сессию
+    fundingmined = 0            #   добыто за текущую сессию
+
+    timerazban = 0
 
     flConnect = False           #   флаг нормального соединения с сайтом
     flAuth = False              #   флаг авторизации на сайте (введения правильного API KEY)
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_delayaftermined = int(self.settings.value("l_delayaftermined"))
         self.l_losslimit_b = int(self.settings.value("l_losslimit_b"))
         self.l_midvollimit = float(self.settings.value("l_midvollimit"))
+        self.l_bandelay = float(self.settings.value("l_bandelay"))
 
         self.sendq = queue.Queue()
 
@@ -148,9 +150,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.senderq.daemon = True
         self.senderq.start()
 
-        self.listf = {'orderbook_1':{'q':queue.Queue(), 'f':self.message_orderbook_1},
-                      'index':{'q':queue.Queue(), 'f':self.message_index},
-                      'ticker':{'q':queue.Queue(), 'f':self.message_ticker},
+        self.listf = {'orderbook_1':{'q':queue.LifoQueue(), 'f':self.message_orderbook_1},
+                      'index':{'q':queue.LifoQueue(), 'f':self.message_index},
+                      'ticker':{'q':queue.LifoQueue(), 'f':self.message_ticker},
                       'tradingStatus': {'q': queue.Queue(), 'f': self.message_tradingStatus},
                       'orderStatus': {'q': queue.Queue(), 'f': self.message_orderStatus},
                       'orderFilled': {'q': queue.Queue(), 'f': self.message_orderFilled},
@@ -192,6 +194,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.settings.setValue("l_delayaftermined", str(self.l_delayaftermined))
         self.settings.setValue("l_losslimit_b", str(self.l_losslimit_b))
         self.settings.setValue("l_midvollimit", str(self.l_midvollimit))
+        self.settings.setValue("l_bandelay", str(self.l_bandelay))
         #   завершение работы потоков
         self.intimer.flClosing = True
         self.senderq.flClosing = True
@@ -291,6 +294,7 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.startbutton.setText('СТАРТ')
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
                 self.dxthread.send_privat('closePosition', symbol=self.symbol, ordType='MARKET')
+                self.listOrders.clear()
                 logging.info('------------------------------------')
                 logging.info('Время работы: ')
                 logging.info('Добыто: ')
@@ -309,7 +313,9 @@ class MainWindow(QMainWindow, UiMainWindow):
         def checkLimits():
             if not self.flAutoLiq:
                 return False
-            if len(self.listContracts) != 0:
+            if time.time() <= self.timerazban:
+                return False
+            if self.tickCounter < NUMTICKS:
                 return False
             if self.intimer.pnlTime <= self.l_delayaftermined:
                 return False
@@ -318,7 +324,6 @@ class MainWindow(QMainWindow, UiMainWindow):
             if self.traderBalance <= self.l_losslimit_b:
                 return False
             return True
-
 
         if self.current_cellprice != 0:
             distlist = {}
@@ -433,12 +438,6 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.changemarketsituation()
             self.last_cellprice = self.current_cellprice
 
-            # завершаем открытые контракты
-            for cont in self.listContracts:
-                if cont.status == ACTIVE:
-                    self.dxthread.send_privat('closeContract', symbol=self.symbol,
-                                              contractId=cont.contractId, ordType='MARKET')
-                    cont.status = CLOSING
         self.lock.release()
 
     # ==== приватные сообщения
@@ -483,25 +482,16 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.lock.acquire()
         self.contractmined += (data['pnl'] - self.pnl)
         self.pnl = data['pnl']
-        # отменяем ордер
-        if data['orderStatus'] == 'FILLED':
-            orderidtoremove = data['origClOrdId']
-            lo = list(self.listOrders)
-            for order in lo:
-                if order.origClOrdId == orderidtoremove:
-                    self.listOrders.remove(order)
-        # создаем контракты
-        listnewcontids = [x for x in data['contracts'] if x['qty'] != 0]
-        self.contractcount += len(listnewcontids)
-        listcontidtoclose = [x['origContractId'] for x in data['contracts'] if x['qty'] == 0]
-        for cont in listnewcontids:
-            self.listContracts.append(Contract(contractId=cont['contractId'],
-                                               origContractId=cont['origContractId'],
-                                               status=ACTIVE))
-        lc = list(self.listContracts)
-        for cont in lc:
-            if cont.origContractId in listcontidtoclose:
-                self.listContracts.remove(cont)
+
+        listfilledorders = [x for x in data['contracts'] if x['qty'] != 0]
+        if len(listfilledorders) != 0:
+            self.timerazban = time.time() + self.l_bandelay
+            self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
+            self.listOrders.clear()
+
+        for cont in listfilledorders:
+            self.dxthread.send_privat('closeContract', symbol=self.symbol, contractId=cont['contractId'], ordType='MARKET')
+
         self.fill_data(data)
         self.lock.release()
 
@@ -542,6 +532,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.intimer.pnlStartTime = time.time()
         self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
         self.dxthread.send_privat('getTraderStatus', symbol=self.symbol)
+        self.listOrders.clear()
         self.lock.release()
 
     def message_position(self, data):

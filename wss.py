@@ -2,7 +2,6 @@ from threading import Thread
 import websocket
 import json
 import time
-import datetime
 import logging
 
 
