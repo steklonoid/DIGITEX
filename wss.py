@@ -92,12 +92,12 @@ class Senderq(Thread):
 
     def run(self) -> None:
         while not self.flClosing:
-            time.sleep(0.1)
             data = self.q.get()
             try:
                 self.th.wsapp.send(data)
             except:
                 pass
+            time.sleep(0.1)
 
 
 class InTimer(Thread):
@@ -113,9 +113,9 @@ class InTimer(Thread):
 
     def run(self) -> None:
         while not self.flClosing:
-            time.sleep(self.delay)
             if self.flWorking:
                 self.pnlTime = time.time() - self.pnlStartTime
+            time.sleep(self.delay)
 
 
 class Analizator(Thread):
@@ -128,5 +128,5 @@ class Analizator(Thread):
 
     def run(self) -> None:
         while not self.flClosing:
-            time.sleep(self.delay)
             self.f()
+            time.sleep(self.delay)
