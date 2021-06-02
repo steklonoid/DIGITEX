@@ -136,9 +136,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.l_dist3 = int(self.settings.value("l_dist3"))
         self.l_dist4 = int(self.settings.value("l_dist4"))
         self.l_dist5 = int(self.settings.value("l_dist5"))
+        self.l_dist1_k = float(self.settings.value("l_dist1_k"))
+        self.l_dist2_k = float(self.settings.value("l_dist2_k"))
+        self.l_dist3_k = float(self.settings.value("l_dist3_k"))
+        self.l_dist4_k = float(self.settings.value("l_dist4_k"))
+        self.l_dist5_k = float(self.settings.value("l_dist5_k"))
         self.l_delayaftermined = int(self.settings.value("l_delayaftermined"))
         self.l_losslimit_b = int(self.settings.value("l_losslimit_b"))
-        self.l_midvollimit = float(self.settings.value("l_midvollimit"))
         self.l_bandelay = float(self.settings.value("l_bandelay"))
 
         self.sendq = queue.Queue()
@@ -193,9 +197,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.settings.setValue("l_dist3", str(self.l_dist3))
         self.settings.setValue("l_dist4", str(self.l_dist4))
         self.settings.setValue("l_dist5", str(self.l_dist5))
+        self.settings.setValue("l_dist1_k", str(self.l_dist1_k))
+        self.settings.setValue("l_dist2_k", str(self.l_dist2_k))
+        self.settings.setValue("l_dist3_k", str(self.l_dist3_k))
+        self.settings.setValue("l_dist4_k", str(self.l_dist4_k))
+        self.settings.setValue("l_dist5_k", str(self.l_dist5_k))
         self.settings.setValue("l_delayaftermined", str(self.l_delayaftermined))
         self.settings.setValue("l_losslimit_b", str(self.l_losslimit_b))
-        self.settings.setValue("l_midvollimit", str(self.l_midvollimit))
         self.settings.setValue("l_bandelay", str(self.l_bandelay))
         #   завершение работы потоков
         self.intimer.flClosing = True
@@ -312,8 +320,6 @@ class MainWindow(QMainWindow, UiMainWindow):
                 return False
             if self.intimer.pnlTime <= self.l_delayaftermined:
                 return False
-            if self.market_volatility >= self.l_midvollimit:
-                return False
             if self.traderBalance <= self.l_losslimit_b:
                 return False
             return True
@@ -329,18 +335,19 @@ class MainWindow(QMainWindow, UiMainWindow):
                 else:
                     bonddist = 0
                 bonddist = min(bonddist, MAXORDERDIST)
-                if bonddist == 0:
-                    bondmod = 0
-                elif bonddist == 1:
+
+                bondmod = 0
+                if bonddist == 1  and self.market_volatility <= self.l_dist1_k:
                     bondmod = self.l_dist1
-                elif bonddist == 2:
+                elif bonddist == 2  and self.market_volatility <= self.l_dist2_k:
                     bondmod = self.l_dist2
-                elif bonddist == 3:
+                elif bonddist == 3  and self.market_volatility <= self.l_dist3_k:
                     bondmod = self.l_dist3
-                elif bonddist == 4:
+                elif bonddist == 4  and self.market_volatility <= self.l_dist4_k:
                     bondmod = self.l_dist4
-                elif bonddist == 5:
+                elif bonddist == 5  and self.market_volatility <= self.l_dist5_k:
                     bondmod = self.l_dist5
+
                 if bondmod != 0:
                     distlist[price] = self.l_numconts * bondmod
 
@@ -481,6 +488,7 @@ class MainWindow(QMainWindow, UiMainWindow):
             self.timerazban = time.time() + self.l_bandelay
             self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
             self.listOrders.clear()
+            self.contractcount += len(listfilledorders)
 
         for cont in listfilledorders:
             self.dxthread.send_privat('closeContract', symbol=self.symbol, contractId=cont['contractId'], ordType='MARKET')
