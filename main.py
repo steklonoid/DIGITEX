@@ -189,29 +189,13 @@ class MainWindow(QMainWindow, UiMainWindow):
         #   закрываем соединение с БД
         if self.db.isOpen():
             self.db.close()
-        #   сохраняем настройки
-        self.settings.setValue("symbol", str(self.symbol))
-        self.settings.setValue("l_numconts", str(self.l_numconts))
-        self.settings.setValue("l_dist1", str(self.l_dist1))
-        self.settings.setValue("l_dist2", str(self.l_dist2))
-        self.settings.setValue("l_dist3", str(self.l_dist3))
-        self.settings.setValue("l_dist4", str(self.l_dist4))
-        self.settings.setValue("l_dist5", str(self.l_dist5))
-        self.settings.setValue("l_dist1_k", str(self.l_dist1_k))
-        self.settings.setValue("l_dist2_k", str(self.l_dist2_k))
-        self.settings.setValue("l_dist3_k", str(self.l_dist3_k))
-        self.settings.setValue("l_dist4_k", str(self.l_dist4_k))
-        self.settings.setValue("l_dist5_k", str(self.l_dist5_k))
-        self.settings.setValue("l_delayaftermined", str(self.l_delayaftermined))
-        self.settings.setValue("l_losslimit_b", str(self.l_losslimit_b))
-        self.settings.setValue("l_bandelay", str(self.l_bandelay))
         #   завершение работы потоков
         self.intimer.flClosing = True
         self.senderq.flClosing = True
         self.dxthread.flClosing = True
         self.analizator.flClosing = True
         self.dxthread.wsapp.close()
-        while self.intimer.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
+        while self.intimer.is_alive() or self.senderq.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
             pass
 
     def returnid(self):

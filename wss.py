@@ -28,8 +28,7 @@ class WSThread(Thread):
             self.pc.statusbar.showMessage('Нет соединения с сервером')
 
         def on_error(wsapp, error):
-            logging.info(error)
-            self.pc.statusbar.showMessage(error)
+            logging.info(str(error))
 
         def on_message(wssapp, message):
             if message == 'ping':
