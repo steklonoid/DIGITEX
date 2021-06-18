@@ -52,6 +52,8 @@ class WSThread(Thread):
                 self.pc.statusbar.showMessage('Восстановление соединения с сервером')
             except:
                 pass
+            finally:
+                time.sleep(1)
 
     def changeEx(self, name):
         self.send_public('subscribe', name + '@index', name + '@ticker', name + '@orderbook_1')

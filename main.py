@@ -1,7 +1,7 @@
 import random
 import sys
 import os
-import time
+import time, datetime
 import queue
 import logging
 
@@ -195,7 +195,7 @@ class MainWindow(QMainWindow, UiMainWindow):
         self.dxthread.flClosing = True
         self.analizator.flClosing = True
         self.dxthread.wsapp.close()
-        while self.intimer.is_alive() or self.senderq.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
+        while self.intimer.is_alive() or self.dxthread.is_alive() or self.analizator.is_alive():
             pass
 
     def returnid(self):
@@ -272,20 +272,23 @@ class MainWindow(QMainWindow, UiMainWindow):
                 self.fundingmined = 0
                 self.contractmined = 0
                 self.contractcount = 0
-                logging.info('-------------start session------------')
-                logging.info('Баланс: ' + str(self.traderBalance))
-                logging.info('------------------------------------')
+                logging.info('-----------------------------------START')
+                logging.info('Пилот: ' + str(self.user))
+                logging.info('Валюта: ' + str(self.symbol))
+                logging.info('Баланс на вылете: ' + str(round(self.traderBalance, 2)))
             else:
                 self.startbutton.setText('СТАРТ')
                 self.dxthread.send_privat('cancelAllOrders', symbol=self.symbol)
                 self.dxthread.send_privat('closePosition', symbol=self.symbol, ordType='MARKET')
                 self.listOrders.clear()
-                logging.info('------------------------------------')
-                logging.info('Время работы: ')
-                logging.info('Добыто: ')
-                logging.info('Доход от контрактов: ')
-                logging.info('Баланс: ')
-                logging.info('-------------end session------------')
+                logging.info('-----------------------------------STOP')
+                logging.info('Время полета: ' + str(datetime.timedelta(seconds=(time.time() - self.intimer.workingStartTime))))
+                logging.info('Добыто: ' + str(round(self.fundingmined, 2)))
+                logging.info('Выплат: ' + str(self.fundingcount))
+                logging.info('Доход от контрактов: ' + str(round(self.contractmined, 2)))
+                logging.info('Сорвано: ' + str(self.contractcount))
+                logging.info('Баланс при приземлении: ' + str(round(self.traderBalance, 2)))
+                logging.info('----------------------------------------')
 
     def fill_data(self, data):
         self.traderBalance = data['traderBalance']
