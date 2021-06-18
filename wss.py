@@ -4,7 +4,6 @@ import json
 import time
 import logging
 
-
 class WSThread(Thread):
     methods = {'subscribe':1, 'unsubscribe':2, 'subscriptions':3, 'auth':4, 'placeOrder':5, 'cancelOrder':6,
                'cancelAllOrders':7, 'placeCondOrder':8, 'cancelCondOrder':9, 'closeContract':10, 'closePosition':11,
@@ -21,7 +20,7 @@ class WSThread(Thread):
             self.pc.statusbar.showMessage('Есть соединение с сервером')
             self.changeEx(self.pc.symbol)
             if self.pc.flAuth:
-                self.pc.authser()
+                self.pc.authuser()
 
         def on_close(wsapp, close_status_code, close_msg):
             logging.info('close / ' + str(close_status_code) + ' / ' + str(close_msg))

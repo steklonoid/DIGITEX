@@ -10,7 +10,7 @@ class UiMainWindow(object):
 
     def setupui(self, mainwindow):
         mainwindow.setObjectName("MainWindow")
-        mainwindow.setWindowTitle("DLM Bot v1.4.5")
+        mainwindow.setWindowTitle("DLM Bot v1.4.7")
         mainwindow.setWindowIcon(QIcon("./images/main_icon.png"))
         self.centralwidget = QWidget(mainwindow)
         self.centralwidget.setObjectName("centralwidget")
