@@ -129,6 +129,7 @@ class RegisterWindow(QDialog):
         labelUser.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         labelUser.setFont(QFont("Helvetica", 16))
         vbox.addWidget(labelUser)
+        #   поле для ввода логина
         self.lineUser = QLineEdit()
         self.lineUser.textEdited.connect(self.lineUsertextEdited)
         self.lineUser.setEnabled(not self.changeak)
@@ -141,6 +142,7 @@ class RegisterWindow(QDialog):
         labelPassword.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         labelPassword.setFont(QFont("Helvetica", 16))
         vbox.addWidget(labelPassword)
+        #   поле для первого ввода пароля
         self.lineP1 = QLineEdit()
         self.lineP1.setEchoMode(QLineEdit.Password)
         self.lineP1.textEdited.connect(self.linePasswordtextEdited)
@@ -148,6 +150,7 @@ class RegisterWindow(QDialog):
         if self.changeak:
             self.lineP1.setText(self.psw)
         vbox.addWidget(self.lineP1)
+        #   поле для второго ввода пароля
         self.lineP2 = QLineEdit()
         self.lineP2.setEchoMode(QLineEdit.Password)
         self.lineP2.textEdited.connect(self.linePasswordtextEdited)
@@ -159,6 +162,7 @@ class RegisterWindow(QDialog):
         labelAK.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         labelAK.setFont(QFont("Helvetica", 16))
         vbox.addWidget(labelAK)
+        #   поле для ввода APIKEY
         self.lineAK = QLineEdit()
         self.lineAK.setEchoMode(QLineEdit.Password)
         vbox.addWidget(self.lineAK)
